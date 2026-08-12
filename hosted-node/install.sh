@@ -113,7 +113,7 @@ for attempt in {1..30}; do
   sleep 1
 done
 
-PUBLIC_HOST="${PUBLIC_HOST}" STATE_ROOT="${STATE_ROOT}" node <<'NODE'
+env PUBLIC_HOST="${PUBLIC_HOST}" STATE_ROOT="${STATE_ROOT}" node <<'NODE'
 const fs = require('node:fs');
 const path = require('node:path');
 
