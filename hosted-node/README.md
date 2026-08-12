@@ -27,8 +27,15 @@ IP address, JSON connection file, password, token, terminal, or Output channel.
 
 The first installation uses a protected on-node outbox so the authentication
 flow can be tested before an email provider is connected. For real delivery,
-edit `~/.config/eduperf/email.env` and add credentials for a verified Resend
-sending domain:
+verify a Resend sending domain and run the interactive setup once:
+
+```sh
+./hosted-node/configure-email.sh
+```
+
+The script asks for the verified sender and privately prompts for the API key;
+nothing is placed on the command line or in JSON. Equivalently, an administrator
+can write the following settings to `~/.config/eduperf/email.env`:
 
 ```text
 EDUPERF_RESEND_API_KEY=re_replace_me

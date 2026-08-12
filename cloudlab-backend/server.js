@@ -200,7 +200,15 @@ function createHandler({ queue, worker, token, credentials, authManager }) {
           return;
         }
         const body = await readJson(request);
-        await authManager.requestCode(body.email, request.socket.remoteAddress || 'unknown');
+        try {
+          await authManager.requestCode(body.email, request.socket.remoteAddress || 'unknown');
+        } catch (error) {
+          // Do not let a provider outage reveal that one address is allowlisted
+          // while another is not. Validation and throttling errors remain useful
+          // client feedback; delivery errors are recorded only in service logs.
+          if (Number(error?.statusCode) !== 503) throw error;
+          process.stderr.write(`EduPerf sign-in email delivery failed: ${sanitizeError(error)}\n`);
+        }
         send(response, 202, {
           accepted: true,
           message: 'If this email is allowed, a one-time code has been sent.',

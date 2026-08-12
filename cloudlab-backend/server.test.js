@@ -111,6 +111,44 @@ test('email code signs in without a connection file and isolates each user run',
   )).status, 200);
 });
 
+test('email-provider failures do not disclose allowlist membership', async (context) => {
+  const authManager = new EmailAuthManager({
+    allowedEmails: new Set(['probirr@umich.edu']),
+    secret: Buffer.alloc(48, 4),
+    mailer: {
+      kind: 'failing-provider',
+      deliveryReady: true,
+      async sendCode() {
+        const error = new Error('provider unavailable');
+        error.statusCode = 503;
+        throw error;
+      },
+    },
+    codeGenerator: () => '842019',
+  });
+  const worker = { capabilities: async () => [], learningCase: async () => ({}) };
+  const queue = new SerialJobQueue(worker);
+  const server = http.createServer(createHandler({
+    queue, worker, credentials: [], authManager,
+  }));
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  context.after(() => server.close());
+  const port = server.address().port;
+
+  const originalWrite = process.stderr.write;
+  process.stderr.write = () => true;
+  context.after(() => { process.stderr.write = originalWrite; });
+  const allowed = await request(port, 'POST', '/v1/auth/request-code', undefined, {
+    email: 'probirr@umich.edu',
+  });
+  const unknown = await request(port, 'POST', '/v1/auth/request-code', undefined, {
+    email: 'unknown@example.edu',
+  });
+  process.stderr.write = originalWrite;
+  assert.equal(allowed.status, 202);
+  assert.deepEqual(allowed.body, unknown.body);
+});
+
 test('loads separate revocable faculty credentials', (context) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'eduperf-credentials-'));
   context.after(() => fs.rmSync(directory, { recursive: true, force: true }));
