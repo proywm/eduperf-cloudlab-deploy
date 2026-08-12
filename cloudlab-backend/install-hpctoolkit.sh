@@ -8,9 +8,14 @@ readonly HPCTOOLKIT_SPEC="hpctoolkit@2024.01.1~viewer~mpi+papi target=haswell"
 readonly EDUPERF_SPACK_ROOT="/opt/eduperf-spack"
 readonly PREFIX_FILE="/opt/eduperf/hpctoolkit-prefix"
 
+export SPACK_USER_CONFIG_PATH="/opt/eduperf-spack-config"
+export SPACK_USER_CACHE_PATH="/opt/eduperf-spack-cache"
+
 if [[ -s "${PREFIX_FILE}" ]] && [[ -x "$(<"${PREFIX_FILE}")/bin/hpcrun" ]]; then
   exit 0
 fi
+
+install -d -m 0755 "${SPACK_USER_CONFIG_PATH}" "${SPACK_USER_CACHE_PATH}"
 
 if [[ ! -d "${EDUPERF_SPACK_ROOT}/.git" ]]; then
   git clone --filter=blob:none https://github.com/spack/spack.git "${EDUPERF_SPACK_ROOT}"

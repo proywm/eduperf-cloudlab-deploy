@@ -8,6 +8,9 @@ readonly CONFIG_ROOT="${XDG_CONFIG_HOME:-${HOME}/.config}/eduperf"
 readonly EDUPERF_SPACK_ROOT="${DATA_ROOT}/spack"
 readonly PREFIX_FILE="${CONFIG_ROOT}/hpctoolkit-prefix"
 
+export SPACK_USER_CONFIG_PATH="${DATA_ROOT}/spack-config"
+export SPACK_USER_CACHE_PATH="${DATA_ROOT}/spack-cache"
+
 for command_name in git python3; do
   if ! command -v "${command_name}" >/dev/null 2>&1; then
     echo "Required command is missing: ${command_name}" >&2
@@ -15,7 +18,7 @@ for command_name in git python3; do
   fi
 done
 
-install -d -m 0755 "${DATA_ROOT}"
+install -d -m 0755 "${DATA_ROOT}" "${SPACK_USER_CONFIG_PATH}" "${SPACK_USER_CACHE_PATH}"
 install -d -m 0700 "${CONFIG_ROOT}"
 if [[ ! -d "${EDUPERF_SPACK_ROOT}/.git" ]]; then
   git clone --filter=blob:none https://github.com/spack/spack.git "${EDUPERF_SPACK_ROOT}"
