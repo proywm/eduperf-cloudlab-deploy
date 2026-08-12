@@ -17,8 +17,9 @@ const PYTHON = {
 
 const EIGEN = {
   version: '3.4.0',
-  url: 'https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz',
-  sha256: '8586084f71f9bde545ee7fa6d00288b264a2b7ac3607b974e54d13e7162c1c72',
+  url: 'https://gitlab.com/api/v4/projects/libeigen%2Feigen/repository/archive.tar.gz?sha=3.4.0',
+  sha256: 'ba6ef66ba2d319e0a871a267889411c550d4bdf5bc7c62f86c60276913f3f4ba',
+  archiveDirectory: 'eigen-3.4.0-3147391d946bb4b6c68edd901f2add6ac1f31f8c',
 };
 
 function run(command, args, options = {}) {
@@ -113,6 +114,8 @@ async function installEigen(portableDirectory) {
     await fsp.mkdir(dependenciesDirectory, { recursive: true });
     await fsp.rm(eigenDirectory, { recursive: true, force: true });
     await run('tar', ['-xzf', archive, '-C', dependenciesDirectory]);
+    const extractedDirectory = path.join(dependenciesDirectory, EIGEN.archiveDirectory);
+    await fsp.rename(extractedDirectory, eigenDirectory);
     return eigenDirectory;
   } finally {
     await fsp.rm(temporaryDirectory, { recursive: true, force: true });
