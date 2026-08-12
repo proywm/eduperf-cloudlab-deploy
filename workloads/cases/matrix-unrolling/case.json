@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 1,
+  "id": "matrix-unrolling",
+  "perfbankId": "C17",
+  "order": 1,
+  "icon": "symbol-operator",
+  "title": "Loop Unrolling in Flight-Control Code",
+  "subtitle": "Can less loop-control work improve throughput without changing the result?",
+  "language": "C++17",
+  "course": "CIS 310 · Computer Organization",
+  "estimatedMinutes": 25,
+  "provenance": {
+    "project": "dRonin",
+    "commit": "9e08bcd2eb15931924b967731888b22844449850",
+    "url": "https://github.com/d-ronin/dRonin/commit/9e08bcd2eb15931924b967731888b22844449850",
+    "reportedSpeedup": 1.33
+  },
+  "files": {
+    "before": "before.cpp",
+    "after": "after.cpp",
+    "harness": "harness.cpp",
+    "header": "matrix.hpp"
+  },
+  "build": {
+    "standard": "c++17",
+    "optimization": "-O2",
+    "flags": [
+      "-std=c++17",
+      "-O2",
+      "-g",
+      "-fno-omit-frame-pointer"
+    ]
+  },
+  "execution": {
+    "checkMode": "check",
+    "benchmarkMode": "benchmark",
+    "profileWorkload": "18×8 · 8×10 matrix multiplication",
+    "profileModes": {
+      "before": "profile-before",
+      "after": "profile-after"
+    },
+    "expectedCheckCases": 390
+  },
+  "profiling": {
+    "actionLabel": "Inspect loop overhead",
+    "targets": {
+      "before": "matrix_mul_before",
+      "after": "matrix_mul_after"
+    },
+    "events": [
+      "CYCLES",
+      "INSTRUCTIONS",
+      "BRANCHES",
+      "BRANCH-MISSES",
+      "CACHE-MISSES"
+    ],
+    "sampleFrequencyHz": 100,
+    "metrics": [
+      {
+        "id": "cycles",
+        "label": "CPU cycles",
+        "unit": "cycles",
+        "direction": "lower",
+        "explanation": "Estimated cycles attributed to the matrix routine. Fewer cycles for the same workload indicate less processor time."
+      },
+      {
+        "id": "instructions",
+        "label": "Instructions",
+        "unit": "instructions",
+        "direction": "lower",
+        "explanation": "Estimated retired instructions. Unrolling should reduce repeated loop-control instructions."
+      },
+      {
+        "id": "ipc",
+        "label": "IPC",
+        "unit": "instructions/cycle",
+        "direction": "higher",
+        "explanation": "Instructions per cycle, derived from HPCToolkit counts. Higher IPC can indicate more useful work issued per cycle."
+      },
+      {
+        "id": "branches",
+        "label": "Branches",
+        "unit": "branches",
+        "direction": "lower",
+        "explanation": "Estimated branch instructions. Four multiply-adds per loop test should reduce branch overhead."
+      },
+      {
+        "id": "branchMissRate",
+        "label": "Branch-miss rate",
+        "unit": "%",
+        "direction": "lower",
+        "explanation": "Branch misses divided by branch instructions. The count of branches matters more than this rate for this case."
+      },
+      {
+        "id": "cacheMisses",
+        "label": "Cache misses",
+        "unit": "misses",
+        "direction": "lower",
+        "secondary": true,
+        "explanation": "Estimated last-level cache misses. This metric is included as a control; the source change does not improve locality."
+      }
+    ]
+  },
+  "learning": {
+    "change": "The optimized inner loop performs four multiply-adds for each loop-control step, then handles zero to three remaining elements.",
+    "hypothesis": "For the same matrix workload, the unrolled version should execute fewer loop-control instructions and branches and may expose a larger instruction-scheduling window.",
+    "caution": "A passing differential test is evidence, not a proof. Runtime and counter values vary with the compiler, processor, operating system, and background load.",
+    "prompts": [
+      "Which source-level change best explains the instruction-count difference?",
+      "Does the IPC result support a wider scheduling window on this processor?",
+      "Why are cache misses not the main explanation for this optimization?",
+      "What does the remainder loop protect when the shared dimension is not divisible by four?"
+    ]
+  }
+}

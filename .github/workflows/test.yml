@@ -1,0 +1,48 @@
+name: Test deployment
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22.23.2"
+          package-manager-cache: false
+
+      - name: Install native build dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential libeigen3-dev
+
+      - name: Audit the public deployment surface
+        run: |
+          test ! -e vscode-extension
+          test ! -e data
+          ! grep -R -n -E '/home/user|tenureRef|course_files_export|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY' cloudlab-backend workloads profile.py README.md SECURITY.md package.json
+
+      - name: Validate backend and CloudLab scripts
+        run: |
+          bash -n cloudlab-backend/bootstrap.sh cloudlab-backend/install-hpctoolkit.sh
+          python3 -m py_compile profile.py
+          npm run test:backend
+
+      - name: Build the pinned workload runtime
+        run: npm run build:workloads
+
+      - name: Run all 100 fixed adapters
+        run: npm run test:workloads
+
+      - name: Run the backend-to-workload integration test
+        run: npm run test:integration
+
+      - name: Run all HPCToolkit-enhanced harness workloads
+        run: npm run test:enhanced

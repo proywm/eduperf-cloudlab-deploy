@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "id": "hash-membership",
+  "perfbankId": "C57",
+  "order": 4,
+  "icon": "list-tree",
+  "title": "Replace a List Scan with Hashing",
+  "subtitle": "Why scan every prior file when the existing hash-map insertion already detects duplicates?",
+  "language": "C++17",
+  "course": "CSCI 241 · Data Structures",
+  "estimatedMinutes": 25,
+  "provenance": {
+    "project": "ArxLibertatis",
+    "commit": "6e318f49642e32a37d2ef88931b94738250aefc6",
+    "url": "https://github.com/arx/ArxLibertatis/commit/6e318f49642e32a37d2ef88931b94738250aefc6",
+    "reportedSpeedup": 30.7
+  },
+  "files": {
+    "before": "before.cpp",
+    "after": "after.cpp",
+    "harness": "harness.cpp",
+    "header": "directory.hpp"
+  },
+  "build": {
+    "standard": "c++17",
+    "optimization": "-O2",
+    "flags": ["-std=c++17", "-O2", "-g", "-fno-omit-frame-pointer"]
+  },
+  "execution": {
+    "checkMode": "check",
+    "benchmarkMode": "benchmark",
+    "profileWorkload": "4,096 directories × 256 unique file insertions",
+    "profileModes": {"before": "profile-before", "after": "profile-after"},
+    "expectedCheckCases": 8
+  },
+  "profiling": {
+    "actionLabel": "Inspect membership cost",
+    "targets": {"before": "add_file_before", "after": "add_file_after"},
+    "events": ["CYCLES", "INSTRUCTIONS", "BRANCHES", "BRANCH-MISSES", "CACHE-MISSES"],
+    "sampleFrequencyHz": 1000,
+    "metrics": [
+      {"id": "cycles", "label": "CPU cycles", "unit": "cycles", "direction": "lower", "explanation": "Cycles reveal the cumulative cost of repeatedly walking an ever-growing linked list."},
+      {"id": "instructions", "label": "Instructions", "unit": "instructions", "direction": "lower", "explanation": "The quadratic scan performs many character comparisons and pointer-following steps."},
+      {"id": "ipc", "label": "IPC", "unit": "instructions/cycle", "direction": "higher", "explanation": "IPC provides context for the instruction stream; total work is the central evidence here."},
+      {"id": "branches", "label": "Branches", "unit": "branches", "direction": "lower", "explanation": "Each list node adds loop and string-comparison branches."},
+      {"id": "branchMissRate", "label": "Branch-miss rate", "unit": "%", "direction": "lower", "explanation": "The rate complements the much larger change in total branch count."},
+      {"id": "cacheMisses", "label": "Cache misses", "unit": "misses", "direction": "lower", "explanation": "Following linked-list nodes can create additional memory-system pressure."}
+    ]
+  },
+  "learning": {
+    "change": "The optimized version removes a case-insensitive linked-list scan and lets the already-required hash insertion reject duplicates.",
+    "hypothesis": "Building n unique entries should drop from quadratic comparison work toward expected linear time.",
+    "caution": "Hash operations are expected O(1), not guaranteed O(1), and the after version speculatively allocates before discovering a duplicate.",
+    "prompts": [
+      "Why was the linked-list membership check redundant?",
+      "How does the speedup change as the directory grows?",
+      "Which calling-context metrics distinguish less total work from cache behavior?",
+      "When might allocate-then-undo on a duplicate be a poor tradeoff?"
+    ]
+  }
+}

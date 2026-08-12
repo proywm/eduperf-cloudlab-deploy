@@ -1,0 +1,10 @@
+workloads/portable/
+node_modules/
+*.vsix
+__pycache__/
+*.pyc
+connection.json
+api-token
+*.pem
+*.key
+*.crt

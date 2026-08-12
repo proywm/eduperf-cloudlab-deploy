@@ -1,0 +1,22 @@
+{
+  "name": "eduperf-cloudlab-deploy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Public, fixed-workload CloudLab measurement backend for EduPerf",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/proywm/eduperf-cloudlab-deploy.git"
+  },
+  "engines": {
+    "node": "22.23.2"
+  },
+  "scripts": {
+    "build:workloads": "node workloads/scripts/build-portable.js",
+    "test": "npm run test:backend && npm run test:workloads && npm run test:integration",
+    "test:backend": "node --test cloudlab-backend/server.test.js",
+    "test:integration": "node --test cloudlab-backend/worker.integration.test.js",
+    "test:workloads": "node workloads/scripts/test-portable.js",
+    "test:enhanced": "node workloads/scripts/test-case.js"
+  }
+}

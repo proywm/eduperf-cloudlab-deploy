@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "id": "vector-reserve",
+  "perfbankId": "C36",
+  "order": 2,
+  "icon": "database",
+  "title": "Reserve Dynamic-Array Capacity",
+  "subtitle": "What does geometric vector growth cost when the final size is already known?",
+  "language": "C++17",
+  "course": "CSCI 241 · Data Structures",
+  "estimatedMinutes": 20,
+  "provenance": {
+    "project": "Radium-Engine",
+    "commit": "be4f25a52b4991fd8da3eca0e1deadf739cae852",
+    "url": "https://github.com/STORM-IRIT/Radium-Engine/commit/be4f25a52b4991fd8da3eca0e1deadf739cae852",
+    "reportedSpeedup": 1.2
+  },
+  "files": {
+    "before": "before.cpp",
+    "after": "after.cpp",
+    "harness": "harness.cpp",
+    "header": "mesh.hpp"
+  },
+  "build": {
+    "standard": "c++17",
+    "optimization": "-O2",
+    "flags": ["-std=c++17", "-O2", "-g", "-fno-omit-frame-pointer"]
+  },
+  "execution": {
+    "checkMode": "check",
+    "benchmarkMode": "benchmark",
+    "profileWorkload": "4,096 tube meshes with 512 faces",
+    "profileModes": {"before": "profile-before", "after": "profile-after"},
+    "expectedCheckCases": 12
+  },
+  "profiling": {
+    "actionLabel": "Inspect allocation pressure",
+    "targets": {"before": "make_tube_before", "after": "make_tube_after"},
+    "events": ["CYCLES", "INSTRUCTIONS", "BRANCHES", "BRANCH-MISSES", "CACHE-MISSES"],
+    "sampleFrequencyHz": 1000,
+    "metrics": [
+      {"id": "cycles", "label": "CPU cycles", "unit": "cycles", "direction": "lower", "explanation": "Cycles attributed to mesh construction, including inlined vector growth work."},
+      {"id": "instructions", "label": "Instructions", "unit": "instructions", "direction": "lower", "explanation": "Extra growth checks and element moves increase the work retired by the processor."},
+      {"id": "ipc", "label": "IPC", "unit": "instructions/cycle", "direction": "higher", "explanation": "Instructions per cycle helps distinguish less work from better processor utilization."},
+      {"id": "cacheMisses", "label": "Cache misses", "unit": "misses", "direction": "lower", "explanation": "Reallocating and copying growing buffers can touch more memory."}
+    ]
+  },
+  "learning": {
+    "change": "The optimized version reserves the exact capacities of all three vectors before appending elements.",
+    "hypothesis": "Preallocation should remove allocator round trips and repeated copies without changing the final mesh.",
+    "caution": "reserve() helps only when a useful capacity estimate is available; excessive reservation can waste memory.",
+    "prompts": [
+      "Why is push_back still amortized O(1) even though some appends copy the whole buffer?",
+      "Which evidence supports less allocation and copy churn?",
+      "Why is this a constant-factor optimization rather than an asymptotic improvement?"
+    ]
+  }
+}

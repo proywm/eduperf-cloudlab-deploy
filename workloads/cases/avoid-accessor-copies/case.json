@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "id": "avoid-accessor-copies",
+  "perfbankId": "C38",
+  "order": 3,
+  "icon": "references",
+  "title": "Avoid Hidden Accessor Copies",
+  "subtitle": "Can a harmless-looking getter dominate a hot-path hash operation?",
+  "language": "C++17",
+  "course": "CSC 116 · Programming Fundamentals",
+  "estimatedMinutes": 20,
+  "provenance": {
+    "project": "Clang Static Analyzer",
+    "commit": "fbe4d36f1f83ca12b532e0a946cbffcdb54f904c",
+    "url": "https://github.com/llvm-mirror/clang/commit/fbe4d36f1f83ca12b532e0a946cbffcdb54f904c",
+    "reportedSpeedup": 15.0
+  },
+  "files": {
+    "before": "before.cpp",
+    "after": "after.cpp",
+    "harness": "harness.cpp",
+    "header": "profile.hpp"
+  },
+  "build": {
+    "standard": "c++17",
+    "optimization": "-O2",
+    "flags": ["-std=c++17", "-O2", "-g", "-fno-omit-frame-pointer"]
+  },
+  "execution": {
+    "checkMode": "check",
+    "benchmarkMode": "benchmark",
+    "profileWorkload": "67,108,864 node-profile calls",
+    "profileModes": {"before": "profile-before", "after": "profile-after"},
+    "expectedCheckCases": 2048
+  },
+  "profiling": {
+    "actionLabel": "Inspect copy overhead",
+    "targets": {"before": "profile_batch_before", "after": "profile_batch_after"},
+    "events": ["CYCLES", "INSTRUCTIONS"],
+    "sampleFrequencyHz": 1000,
+    "metrics": [
+      {"id": "cycles", "label": "CPU cycles", "unit": "cycles", "direction": "lower", "explanation": "Cycles expose the repeated cost of constructing and destroying accessor results."},
+      {"id": "instructions", "label": "Instructions", "unit": "instructions", "direction": "lower", "explanation": "The direct-member form removes copy-constructor instructions from every call."},
+      {"id": "ipc", "label": "IPC", "unit": "instructions/cycle", "direction": "higher", "explanation": "IPC adds processor context; the primary claim is less work per call."}
+    ]
+  },
+  "learning": {
+    "change": "The optimized method passes existing Location and State members instead of getters that return copies by value.",
+    "hypothesis": "Removing two temporaries from every hot-path call should reduce instructions and cycles while preserving the profile key.",
+    "caution": "The educational stand-ins make copy construction observable; absolute speedups are not a prediction for every class or compiler.",
+    "prompts": [
+      "Where are the two hidden copy constructors in the before expression?",
+      "Would getters returning const references change the conclusion?",
+      "Why does call frequency determine whether this source-level cleanup matters?"
+    ]
+  }
+}

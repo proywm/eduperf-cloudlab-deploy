@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "id": "buffered-file-output",
+  "perfbankId": "C05",
+  "title": "Buffer Small File Writes",
+  "subtitle": "Batch small records in memory to amortize stream flush and system-call overhead.",
+  "language": "C++17",
+  "course": "CIS 450 Operating Systems",
+  "estimatedMinutes": 20,
+  "icon": "files",
+  "provenance": {
+    "project": "ray",
+    "commit": "4978a3f57dea",
+    "url": "https://github.com/sebhtml/ray/commit/4978a3f57deaab1e6d9290f787fc5c8c23483f56",
+    "reportedSpeedup": 5.6
+  },
+  "files": {
+    "before": "before.cpp",
+    "after": "after.cpp",
+    "harness": "harness.cpp",
+    "header": "io_case.hpp"
+  },
+  "build": {
+    "standard": "c++17",
+    "optimization": "-O2",
+    "flags": ["-std=c++17", "-O2", "-g", "-fno-omit-frame-pointer"]
+  },
+  "execution": {
+    "checkMode": "check",
+    "benchmarkMode": "benchmark",
+    "profileWorkload": "64 calls × 2,048 scaffold-component records",
+    "profileModes": {
+      "before": "profile-before",
+      "after": "profile-after"
+    },
+    "expectedCheckCases": 5
+  },
+  "profiling": {
+    "actionLabel": "Inspect output overhead",
+    "targets": {
+      "before": "write_scaffolds_before",
+      "after": "write_scaffolds_after"
+    },
+    "events": ["CYCLES", "INSTRUCTIONS", "BRANCHES", "BRANCH-MISSES", "CACHE-MISSES"],
+    "sampleFrequencyHz": 1000,
+    "metrics": [
+      {
+        "id": "cycles",
+        "label": "CPU cycles",
+        "unit": "cycles",
+        "direction": "lower",
+        "explanation": "Cycles include formatting, stream flushing, and kernel-crossing overhead for the same records."
+      },
+      {
+        "id": "instructions",
+        "label": "Instructions",
+        "unit": "instructions",
+        "direction": "lower",
+        "explanation": "Retired instructions show how much stream-management work each strategy performs."
+      },
+      {
+        "id": "ipc",
+        "label": "IPC",
+        "unit": "instructions/cycle",
+        "direction": "higher",
+        "explanation": "IPC helps separate front-end execution from time lost across frequent stream flushes."
+      },
+      {
+        "id": "branches",
+        "label": "Branches",
+        "unit": "branches",
+        "direction": "lower",
+        "explanation": "The buffer adds checks but avoids repeating the deeper flush path for every record."
+      },
+      {
+        "id": "branchMissRate",
+        "label": "Branch-miss rate",
+        "unit": "%",
+        "direction": "lower",
+        "explanation": "This rate provides context; total cycles and calls to the output path are the primary evidence."
+      },
+      {
+        "id": "cacheMisses",
+        "label": "Cache misses",
+        "unit": "misses",
+        "direction": "lower",
+        "secondary": true,
+        "explanation": "Cache misses are a control metric because buffering mainly targets I/O boundary overhead."
+      }
+    ]
+  },
+  "learning": {
+    "change": "Replace a flush after every record with bounded user-space buffers and bulk writes.",
+    "hypothesis": "If fixed output-boundary costs dominate, batching the same bytes should reduce cycles and runtime without changing file contents.",
+    "caution": "The reference counters come from one Linux processor. Local runtime varies with the stream implementation and operating system.",
+    "prompts": [
+      "Which calling-context path becomes cheaper when thousands of std::endl flushes become a few bulk writes?",
+      "Do the instruction and cycle changes support a syscall-bound explanation, or a cache-locality explanation?",
+      "When would buffering provide little benefit or increase latency?"
+    ]
+  }
+}

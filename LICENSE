@@ -1,0 +1,40 @@
+PerfBank extension licensing
+
+The extension runtime, harness, lesson text, tests, and original documentation
+are available under the MIT License below.
+
+The before/after/header source files in each learning-case directory are
+educational adaptations governed by the corresponding upstream terms:
+
+- `matrix-unrolling`: GNU General Public License version 3 or later;
+- `vector-reserve`: Apache License 2.0;
+- `avoid-accessor-copies`: University of Illinois/NCSA Open Source License; and
+- `hash-membership`: GNU General Public License version 3.
+
+Copyright and complete upstream terms are available from the pinned revisions
+listed in THIRD_PARTY_NOTICES.md. For the matrix case, the original notice is
+Copyright (C) 2012-2013 Tau Labs. Its license text is available at:
+
+https://github.com/d-ronin/dRonin/blob/9e08bcd2eb15931924b967731888b22844449850/LICENSE.txt
+
+MIT License
+
+Copyright (c) 2026 EduPerf and PerfBank contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

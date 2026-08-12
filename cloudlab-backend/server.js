@@ -1,0 +1,264 @@
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const http = require('node:http');
+const https = require('node:https');
+const path = require('node:path');
+
+const { ACTIONS, EduPerfWorker } = require('./worker');
+
+const MAX_BODY_BYTES = 64 * 1024;
+const MAX_JOBS = 500;
+
+function safeEqual(left, right) {
+  const leftBuffer = Buffer.from(String(left || ''));
+  const rightBuffer = Buffer.from(String(right || ''));
+  return leftBuffer.length === rightBuffer.length
+    && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function readToken(filePath) {
+  const token = fs.readFileSync(filePath, 'utf8').trim();
+  if (token.length < 32) throw new Error('The API token must contain at least 32 characters.');
+  return token;
+}
+
+function send(response, status, value) {
+  const body = `${JSON.stringify(value)}\n`;
+  response.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Content-Length': Buffer.byteLength(body),
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
+  });
+  response.end(body);
+}
+
+async function readJson(request) {
+  let size = 0;
+  const chunks = [];
+  for await (const chunk of request) {
+    size += chunk.length;
+    if (size > MAX_BODY_BYTES) throw new Error('Request body is too large.');
+    chunks.push(chunk);
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  } catch {
+    throw new Error('Request body must be valid JSON.');
+  }
+}
+
+function publicJob(job) {
+  return {
+    runId: job.runId,
+    caseId: job.caseId,
+    action: job.action,
+    state: job.state,
+    queuedAt: job.queuedAt,
+    startedAt: job.startedAt,
+    completedAt: job.completedAt,
+    progress: job.progress,
+    position: job.position,
+    result: job.result,
+    error: job.error,
+  };
+}
+
+class SerialJobQueue {
+  constructor(worker) {
+    this.worker = worker;
+    this.jobs = new Map();
+    this.pending = [];
+    this.running = false;
+  }
+
+  enqueue(caseId, action) {
+    if (!ACTIONS.has(action)) throw new Error(`Unsupported action: ${action}`);
+    const runId = crypto.randomUUID();
+    const job = {
+      runId,
+      caseId,
+      action,
+      state: 'queued',
+      queuedAt: new Date().toISOString(),
+      progress: ['Waiting for the dedicated measurement worker'],
+    };
+    this.jobs.set(runId, job);
+    this.pending.push(job);
+    this.updatePositions();
+    this.trim();
+    void this.drain();
+    return job;
+  }
+
+  updatePositions() {
+    this.pending.forEach((job, index) => { job.position = index + (this.running ? 1 : 0); });
+  }
+
+  async drain() {
+    if (this.running) return;
+    this.running = true;
+    while (this.pending.length > 0) {
+      const job = this.pending.shift();
+      delete job.position;
+      this.updatePositions();
+      job.state = 'running';
+      job.startedAt = new Date().toISOString();
+      try {
+        job.result = await this.worker.execute({
+          runId: job.runId,
+          caseId: job.caseId,
+          action: job.action,
+          onProgress: (message) => {
+            job.progress.push(String(message));
+            job.progress = job.progress.slice(-20);
+          },
+        });
+        job.state = 'complete';
+      } catch (error) {
+        job.state = 'failed';
+        job.error = sanitizeError(error);
+      }
+      job.completedAt = new Date().toISOString();
+    }
+    this.running = false;
+  }
+
+  get(runId) {
+    return this.jobs.get(runId);
+  }
+
+  trim() {
+    if (this.jobs.size <= MAX_JOBS) return;
+    for (const [runId, job] of this.jobs) {
+      if (['complete', 'failed'].includes(job.state)) this.jobs.delete(runId);
+      if (this.jobs.size <= MAX_JOBS) break;
+    }
+  }
+}
+
+function sanitizeError(error) {
+  return String(error?.message || error || 'Unknown backend failure')
+    .replaceAll(process.env.EDUPERF_WORK_DIR || '/local/eduperf/work', '[work]')
+    .split('\n')
+    .slice(0, 12)
+    .join('\n')
+    .slice(0, 4000);
+}
+
+function createHandler({ queue, worker, token }) {
+  return async (request, response) => {
+    try {
+      const url = new URL(request.url, 'https://eduperf.invalid');
+      if (request.method === 'GET' && url.pathname === '/v1/health') {
+        send(response, 200, {
+          status: 'ready',
+          service: 'eduperf-cloudlab-worker',
+          schemaVersion: 1,
+          queueDepth: queue.pending.length + (queue.running ? 1 : 0),
+        });
+        return;
+      }
+
+      const authorization = request.headers.authorization || '';
+      if (!authorization.startsWith('Bearer ')
+          || !safeEqual(authorization.slice(7), token)) {
+        send(response, 401, { error: 'Unauthorized' });
+        return;
+      }
+
+      if (request.method === 'GET' && url.pathname === '/v1/cases') {
+        send(response, 200, { schemaVersion: 1, cases: await worker.capabilities() });
+        return;
+      }
+
+      if (request.method === 'POST' && url.pathname === '/v1/runs') {
+        const body = await readJson(request);
+        if (typeof body.caseId !== 'string' || !/^[a-z0-9-]+$/.test(body.caseId)) {
+          send(response, 400, { error: 'A valid caseId is required.' });
+          return;
+        }
+        if (!ACTIONS.has(body.action)) {
+          send(response, 400, {
+            error: 'action must be verify, run, profile, or run-and-profile.',
+          });
+          return;
+        }
+        await worker.learningCase(body.caseId);
+        const job = queue.enqueue(body.caseId, body.action);
+        send(response, 202, {
+          runId: job.runId,
+          state: job.state,
+          statusPath: `/v1/runs/${job.runId}`,
+        });
+        return;
+      }
+
+      const runMatch = url.pathname.match(/^\/v1\/runs\/([0-9a-f-]{36})$/);
+      if (request.method === 'GET' && runMatch) {
+        const job = queue.get(runMatch[1]);
+        if (!job) {
+          send(response, 404, { error: 'Run not found.' });
+          return;
+        }
+        send(response, 200, publicJob(job));
+        return;
+      }
+
+      send(response, 404, { error: 'Not found' });
+    } catch (error) {
+      send(response, 400, { error: sanitizeError(error) });
+    }
+  };
+}
+
+async function main() {
+  const repositoryRoot = path.resolve(__dirname, '..');
+  const workloadDirectory = process.env.EDUPERF_WORKLOAD_DIR
+    || path.join(repositoryRoot, 'workloads');
+  const workRoot = process.env.EDUPERF_WORK_DIR || '/local/eduperf/work';
+  const tokenFile = process.env.EDUPERF_API_TOKEN_FILE || '/local/eduperf/api-token';
+  const worker = new EduPerfWorker({
+    workloadDirectory,
+    workRoot,
+    hpctoolkitRoot: process.env.EDUPERF_HPCTOOLKIT_ROOT || '',
+  });
+  await fs.promises.mkdir(workRoot, { recursive: true });
+  await worker.cases();
+  const token = readToken(tokenFile);
+  const queue = new SerialJobQueue(worker);
+  const handler = createHandler({ queue, worker, token });
+  const port = Number(process.env.EDUPERF_PORT || 8443);
+  const host = process.env.EDUPERF_HOST || '0.0.0.0';
+  const certPath = process.env.EDUPERF_TLS_CERT || '';
+  const keyPath = process.env.EDUPERF_TLS_KEY || '';
+  const server = certPath && keyPath
+    ? https.createServer({ cert: fs.readFileSync(certPath), key: fs.readFileSync(keyPath) }, handler)
+    : http.createServer(handler);
+  server.requestTimeout = 30_000;
+  server.headersTimeout = 10_000;
+  server.listen(port, host, () => {
+    process.stdout.write(JSON.stringify({
+      event: 'ready',
+      protocol: certPath && keyPath ? 'https' : 'http',
+      host,
+      port,
+    }) + '\n');
+  });
+}
+
+if (require.main === module) {
+  main().catch((error) => {
+    process.stderr.write(`${error.stack || error}\n`);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = {
+  SerialJobQueue,
+  createHandler,
+  publicJob,
+  readJson,
+  safeEqual,
+  sanitizeError,
+};
