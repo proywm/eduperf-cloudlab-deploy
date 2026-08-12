@@ -97,7 +97,8 @@ WantedBy=default.target
 EOF
 
 systemctl --user daemon-reload
-systemctl --user enable --now eduperf-backend.service
+systemctl --user enable eduperf-backend.service
+systemctl --user restart eduperf-backend.service
 
 for attempt in {1..30}; do
   if curl --fail --silent --connect-timeout 2 --noproxy '*' \
