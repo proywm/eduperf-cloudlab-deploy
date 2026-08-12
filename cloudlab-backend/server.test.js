@@ -215,3 +215,43 @@ test('queues one measurement at a time and exposes authenticated status', async 
   assert.equal(secondStatus.body.requestedBy, 'faculty-b');
   assert.equal(maximumActive, 1);
 });
+
+test('preserves classroom fairness by limiting each user without blocking peers', async () => {
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  const queue = new SerialJobQueue({
+    execute: async () => {
+      await held;
+      return { status: 'pass' };
+    },
+  });
+
+  queue.enqueue('matrix-unrolling', 'run', 'student-a@example.edu');
+  queue.enqueue('matrix-unrolling', 'run', 'student-a@example.edu');
+  queue.enqueue('matrix-unrolling', 'profile', 'student-a@example.edu');
+  assert.throws(
+    () => queue.enqueue('matrix-unrolling', 'run', 'student-a@example.edu'),
+    (error) => error.statusCode === 429 && /three measurements/.test(error.message),
+  );
+  assert.doesNotThrow(
+    () => queue.enqueue('matrix-unrolling', 'run', 'student-b@example.edu'),
+  );
+  release();
+  while (queue.running) await new Promise((resolve) => setTimeout(resolve, 1));
+});
+
+test('bounds the shared classroom queue', async () => {
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  const queue = new SerialJobQueue({ execute: async () => held });
+  queue.enqueue('matrix-unrolling', 'run', 'active@example.edu');
+  for (let index = 0; index < 250; index += 1) {
+    queue.enqueue('matrix-unrolling', 'run', `student-${index}@example.edu`);
+  }
+  assert.throws(
+    () => queue.enqueue('matrix-unrolling', 'run', 'overflow@example.edu'),
+    (error) => error.statusCode === 503 && /queue is full/.test(error.message),
+  );
+  release({ status: 'pass' });
+  while (queue.running) await new Promise((resolve) => setTimeout(resolve, 1));
+});

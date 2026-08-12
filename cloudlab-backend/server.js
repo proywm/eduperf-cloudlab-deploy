@@ -9,6 +9,8 @@ const { ACTIONS, EduPerfWorker } = require('./worker');
 
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_JOBS = 500;
+const MAX_QUEUED_JOBS = 250;
+const MAX_USER_OUTSTANDING_JOBS = 3;
 
 function safeEqual(left, right) {
   const leftBuffer = Buffer.from(String(left || ''));
@@ -93,10 +95,26 @@ class SerialJobQueue {
     this.jobs = new Map();
     this.pending = [];
     this.running = false;
+    this.activeJob = undefined;
   }
 
   enqueue(caseId, action, requestedBy = 'instructor') {
     if (!ACTIONS.has(action)) throw new Error(`Unsupported action: ${action}`);
+    const userOutstanding = this.pending.filter(
+      (job) => job.requestedBy === requestedBy,
+    ).length + (this.activeJob?.requestedBy === requestedBy ? 1 : 0);
+    if (userOutstanding >= MAX_USER_OUTSTANDING_JOBS) {
+      const error = new Error(
+        'You already have three measurements queued or running. Wait for one to finish.',
+      );
+      error.statusCode = 429;
+      throw error;
+    }
+    if (this.pending.length >= MAX_QUEUED_JOBS) {
+      const error = new Error('The classroom measurement queue is full. Try again shortly.');
+      error.statusCode = 503;
+      throw error;
+    }
     const runId = crypto.randomUUID();
     const job = {
       runId,
@@ -124,6 +142,7 @@ class SerialJobQueue {
     this.running = true;
     while (this.pending.length > 0) {
       const job = this.pending.shift();
+      this.activeJob = job;
       delete job.position;
       this.updatePositions();
       job.state = 'running';
@@ -144,6 +163,7 @@ class SerialJobQueue {
         job.error = sanitizeError(error);
       }
       job.completedAt = new Date().toISOString();
+      this.activeJob = undefined;
     }
     this.running = false;
   }

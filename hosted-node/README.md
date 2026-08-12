@@ -72,6 +72,11 @@ The source-address safety limit allows 500 code requests per hour so a class
 sharing one campus NAT address can sign in together; the stricter one-minute
 and five-per-hour limits still apply to each email address.
 
+Measurements remain serialized on the pinned CPU. Each signed-in user may have
+at most three jobs queued or running, while the shared waiting queue is capped
+at 250 jobs. This prevents one participant from monopolizing the worker while
+leaving room for a large class to submit together.
+
 The runtime comparison works without HPCToolkit. To build the same pinned
 profiling stack without root access, run:
 
