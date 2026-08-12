@@ -17,9 +17,8 @@ const PYTHON = {
 
 const EIGEN = {
   version: '3.4.0',
-  url: 'https://gitlab.com/api/v4/projects/libeigen%2Feigen/repository/archive.tar.gz?sha=3.4.0',
-  sha256: 'ba6ef66ba2d319e0a871a267889411c550d4bdf5bc7c62f86c60276913f3f4ba',
-  archiveDirectory: 'eigen-3.4.0-3147391d946bb4b6c68edd901f2add6ac1f31f8c',
+  url: 'https://deb.debian.org/debian/pool/main/e/eigen3/eigen3_3.4.0.orig.tar.bz2',
+  sha256: 'b4c198460eba6f28d34894e3a5710998818515104d6e74e5cc331ce31e46e626',
 };
 
 function run(command, args, options = {}) {
@@ -103,7 +102,7 @@ async function installEigen(portableDirectory) {
   }
 
   const temporaryDirectory = await fsp.mkdtemp(path.join(os.tmpdir(), 'eduperf-eigen-'));
-  const archive = path.join(temporaryDirectory, 'eigen.tar.gz');
+  const archive = path.join(temporaryDirectory, 'eigen.tar.bz2');
   try {
     process.stdout.write(`Downloading Eigen ${EIGEN.version}…\n`);
     await download(EIGEN.url, archive, 'Eigen');
@@ -113,9 +112,7 @@ async function installEigen(portableDirectory) {
     }
     await fsp.mkdir(dependenciesDirectory, { recursive: true });
     await fsp.rm(eigenDirectory, { recursive: true, force: true });
-    await run('tar', ['-xzf', archive, '-C', dependenciesDirectory]);
-    const extractedDirectory = path.join(dependenciesDirectory, EIGEN.archiveDirectory);
-    await fsp.rename(extractedDirectory, eigenDirectory);
+    await run('tar', ['-xjf', archive, '-C', dependenciesDirectory]);
     return eigenDirectory;
   } finally {
     await fsp.rm(temporaryDirectory, { recursive: true, force: true });
