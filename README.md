@@ -37,6 +37,11 @@ image is reused.
 See [cloudlab-backend/README.md](cloudlab-backend/README.md) for the service
 protocol, isolation model, and operational details.
 
+For a persistent machine that cannot use the root-level CloudLab bootstrap,
+see [hosted-node/README.md](hosted-node/README.md). The hosted installer runs as
+an ordinary user and creates the IP-aware connection file consumed by the VS
+Code extension.
+
 ## Local validation
 
 On Ubuntu with a C++ compiler and Eigen installed:
