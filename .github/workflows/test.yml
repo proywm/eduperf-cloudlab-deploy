@@ -31,7 +31,7 @@ jobs:
 
       - name: Validate backend and CloudLab scripts
         run: |
-          bash -n cloudlab-backend/bootstrap.sh cloudlab-backend/install-hpctoolkit.sh hosted-node/install.sh hosted-node/install-hpctoolkit.sh
+          bash -n cloudlab-backend/bootstrap.sh cloudlab-backend/install-hpctoolkit.sh hosted-node/install.sh hosted-node/install-hpctoolkit.sh hosted-node/configure-email.sh hosted-node/update-roster.sh
           python3 -m py_compile profile.py
           npm run test:backend
 

@@ -55,18 +55,26 @@ checks the backend's public authentication status before offering sign-in, so
 it reports a clear instructor-configuration message while real delivery is
 disabled.
 
-For a class, export one email address per line (blank lines and `#` comments are
-ignored) and redeploy with a roster file:
+For the initial class deployment, export one email address per line (blank lines
+and `#` comments are ignored) and install with the roster file:
 
 ```sh
 ./hosted-node/install.sh 141.215.12.243 --allowlist-file course-roster.txt
 ```
 
-Removing an address from the allowlist immediately invalidates that person's
-existing signed session. Codes expire after ten minutes, are single-use, allow
-five guesses, and requests are rate-limited per address and source. Sessions
-expire after seven days. The server stores no password and does not retain an
-email-provider credential in its process source.
+Later additions or removals need no workload rebuild, certificate change, or
+extension update:
+
+```sh
+./hosted-node/update-roster.sh course-roster.txt
+```
+
+The atomic update restarts only the service. Removing an address therefore
+invalidates that person's existing signed session immediately after the command
+finishes. Codes expire after ten minutes, are single-use, allow five guesses,
+and requests are rate-limited per address and source. Sessions expire after
+seven days. The server stores no password and does not retain an email-provider
+credential in its process source.
 
 The source-address safety limit allows 500 code requests per hour so a class
 sharing one campus NAT address can sign in together; the stricter one-minute

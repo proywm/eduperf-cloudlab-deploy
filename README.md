@@ -54,7 +54,9 @@ npm run build:workloads
 npm run test:workloads
 npm run test:integration
 npm run test:enhanced
-bash -n cloudlab-backend/bootstrap.sh cloudlab-backend/install-hpctoolkit.sh
+bash -n cloudlab-backend/bootstrap.sh cloudlab-backend/install-hpctoolkit.sh \
+  hosted-node/install.sh hosted-node/install-hpctoolkit.sh \
+  hosted-node/configure-email.sh hosted-node/update-roster.sh
 python3 -m py_compile profile.py
 ```
 
