@@ -15,6 +15,12 @@ const PYTHON = {
   sha256: '23ccae6f1ff73e8aa8378436f869da003b8eb7d6c95f2bc706f494115ba1447d',
 };
 
+const EIGEN = {
+  version: '3.4.0',
+  url: 'https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz',
+  sha256: '8586084f71f9bde545ee7fa6d00288b264a2b7ac3607b974e54d13e7162c1c72',
+};
+
 function run(command, args, options = {}) {
   const { execFile } = require('node:child_process');
   return new Promise((resolve, reject) => {
@@ -79,7 +85,35 @@ async function prunePythonRuntime(portableDirectory) {
   );
 }
 
-async function buildCases(extensionDirectory, portableDirectory) {
+async function installEigen(portableDirectory) {
+  const dependenciesDirectory = path.join(portableDirectory, 'dependencies');
+  const eigenDirectory = path.join(dependenciesDirectory, `eigen-${EIGEN.version}`);
+  try {
+    await fsp.access(path.join(eigenDirectory, 'Eigen', 'Core'));
+    return eigenDirectory;
+  } catch {
+    // Continue with the pinned, checksum-verified header dependency.
+  }
+
+  const temporaryDirectory = await fsp.mkdtemp(path.join(os.tmpdir(), 'eduperf-eigen-'));
+  const archive = path.join(temporaryDirectory, 'eigen.tar.gz');
+  try {
+    process.stdout.write(`Downloading Eigen ${EIGEN.version}…\n`);
+    await download(EIGEN.url, archive);
+    const digest = await sha256(archive);
+    if (digest !== EIGEN.sha256) {
+      throw new Error(`Eigen checksum mismatch: expected ${EIGEN.sha256}, received ${digest}.`);
+    }
+    await fsp.mkdir(dependenciesDirectory, { recursive: true });
+    await fsp.rm(eigenDirectory, { recursive: true, force: true });
+    await run('tar', ['-xzf', archive, '-C', dependenciesDirectory]);
+    return eigenDirectory;
+  } finally {
+    await fsp.rm(temporaryDirectory, { recursive: true, force: true });
+  }
+}
+
+async function buildCases(extensionDirectory, portableDirectory, eigenDirectory) {
   const compiler = await findCompiler(process.env.EDUPERF_BUILD_COMPILER || '');
   const outputDirectory = path.join(portableDirectory, 'cases');
   await fsp.mkdir(outputDirectory, { recursive: true });
@@ -92,9 +126,11 @@ async function buildCases(extensionDirectory, portableDirectory) {
     // GCC 9 implements the final C++20 language features under the provisional
     // c++2a spelling. Newer GCC and Clang retain that alias, so normalize the
     // three C++20 bank adapters for older hosted classroom machines.
-    const runnerFlags = (manifest.runner.flags || []).map(
-      (flag) => flag === '-std=c++20' ? '-std=c++2a' : flag,
-    );
+    const runnerFlags = (manifest.runner.flags || []).map((flag) => {
+      if (flag === '-std=c++20') return '-std=c++2a';
+      if (flag === '-I/usr/include/eigen3') return `-I${eigenDirectory}`;
+      return flag;
+    });
     const compilation = manifest.runner.kind === 'cpp-driver'
       ? await compileDriver({
         compiler,
@@ -127,7 +163,8 @@ async function main() {
   await fsp.mkdir(portableDirectory, { recursive: true });
   const python = await installPython(portableDirectory);
   await prunePythonRuntime(portableDirectory);
-  const built = await buildCases(extensionDirectory, portableDirectory);
+  const eigenDirectory = await installEigen(portableDirectory);
+  const built = await buildCases(extensionDirectory, portableDirectory, eigenDirectory);
   const pythonVersion = (await run(python, ['--version'])).stdout.trim()
     || (await run(python, ['--version'])).stderr.trim();
   const manifest = {
@@ -143,6 +180,10 @@ async function main() {
       caseExecutables: built.count,
       compiler: built.compiler,
       staticLanguageRuntime: true,
+      eigen: {
+        version: EIGEN.version,
+        sha256: EIGEN.sha256,
+      },
     },
   };
   await fsp.writeFile(
