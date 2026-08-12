@@ -42,10 +42,16 @@ async function sha256(filePath) {
   return hash.digest('hex');
 }
 
-async function download(url, destination) {
-  const response = await fetch(url, { redirect: 'follow' });
+async function download(url, destination, label) {
+  const response = await fetch(url, {
+    redirect: 'follow',
+    headers: {
+      Accept: 'application/octet-stream',
+      'User-Agent': 'EduPerf/0.1 dependency builder',
+    },
+  });
   if (!response.ok || !response.body) {
-    throw new Error(`Could not download portable Python (${response.status} ${response.statusText}).`);
+    throw new Error(`Could not download ${label} (${response.status} ${response.statusText}).`);
   }
   await pipeline(response.body, fs.createWriteStream(destination));
 }
@@ -63,7 +69,7 @@ async function installPython(portableDirectory) {
   const archive = path.join(temporaryDirectory, 'python.tar.gz');
   try {
     process.stdout.write(`Downloading portable CPython ${PYTHON.version}…\n`);
-    await download(PYTHON.url, archive);
+    await download(PYTHON.url, archive, 'portable Python');
     const digest = await sha256(archive);
     if (digest !== PYTHON.sha256) {
       throw new Error(`Portable Python checksum mismatch: expected ${PYTHON.sha256}, received ${digest}.`);
@@ -99,7 +105,7 @@ async function installEigen(portableDirectory) {
   const archive = path.join(temporaryDirectory, 'eigen.tar.gz');
   try {
     process.stdout.write(`Downloading Eigen ${EIGEN.version}…\n`);
-    await download(EIGEN.url, archive);
+    await download(EIGEN.url, archive, 'Eigen');
     const digest = await sha256(archive);
     if (digest !== EIGEN.sha256) {
       throw new Error(`Eigen checksum mismatch: expected ${EIGEN.sha256}, received ${digest}.`);
