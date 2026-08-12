@@ -4,6 +4,7 @@ const http = require('node:http');
 const https = require('node:https');
 const path = require('node:path');
 
+const { createEmailAuthManager } = require('./auth');
 const { ACTIONS, EduPerfWorker } = require('./worker');
 
 const MAX_BODY_BYTES = 64 * 1024;
@@ -169,7 +170,7 @@ function sanitizeError(error) {
     .slice(0, 4000);
 }
 
-function createHandler({ queue, worker, token, credentials }) {
+function createHandler({ queue, worker, token, credentials, authManager }) {
   const acceptedCredentials = credentials || [
     { id: 'instructor', label: 'Instructor', token },
   ];
@@ -186,20 +187,55 @@ function createHandler({ queue, worker, token, credentials }) {
         return;
       }
 
+      if (request.method === 'GET' && url.pathname === '/v1/auth/config') {
+        send(response, 200, authManager
+          ? { schemaVersion: 1, ...authManager.configuration() }
+          : { schemaVersion: 1, mode: 'connection-file', deliveryReady: false });
+        return;
+      }
+
+      if (request.method === 'POST' && url.pathname === '/v1/auth/request-code') {
+        if (!authManager) {
+          send(response, 404, { error: 'Email authentication is not enabled.' });
+          return;
+        }
+        const body = await readJson(request);
+        await authManager.requestCode(body.email, request.socket.remoteAddress || 'unknown');
+        send(response, 202, {
+          accepted: true,
+          message: 'If this email is allowed, a one-time code has been sent.',
+        });
+        return;
+      }
+
+      if (request.method === 'POST' && url.pathname === '/v1/auth/verify-code') {
+        if (!authManager) {
+          send(response, 404, { error: 'Email authentication is not enabled.' });
+          return;
+        }
+        const body = await readJson(request);
+        send(response, 200, { schemaVersion: 1, ...authManager.verifyCode(body.email, body.code) });
+        return;
+      }
+
       const authorization = request.headers.authorization || '';
       const suppliedToken = authorization.startsWith('Bearer ')
         ? authorization.slice(7)
         : '';
       const credential = acceptedCredentials.find(
         (candidate) => safeEqual(suppliedToken, candidate.token),
-      );
+      ) || authManager?.authenticate(suppliedToken);
       if (!credential) {
         send(response, 401, { error: 'Unauthorized' });
         return;
       }
 
       if (request.method === 'GET' && url.pathname === '/v1/cases') {
-        send(response, 200, { schemaVersion: 1, cases: await worker.capabilities() });
+        send(response, 200, {
+          schemaVersion: 1,
+          authenticatedAs: credential.id,
+          cases: await worker.capabilities(),
+        });
         return;
       }
 
@@ -228,7 +264,7 @@ function createHandler({ queue, worker, token, credentials }) {
       const runMatch = url.pathname.match(/^\/v1\/runs\/([0-9a-f-]{36})$/);
       if (request.method === 'GET' && runMatch) {
         const job = queue.get(runMatch[1]);
-        if (!job) {
+        if (!job || job.requestedBy !== credential.id) {
           send(response, 404, { error: 'Run not found.' });
           return;
         }
@@ -238,7 +274,7 @@ function createHandler({ queue, worker, token, credentials }) {
 
       send(response, 404, { error: 'Not found' });
     } catch (error) {
-      send(response, 400, { error: sanitizeError(error) });
+      send(response, Number(error?.statusCode) || 400, { error: sanitizeError(error) });
     }
   };
 }
@@ -248,9 +284,11 @@ async function main() {
   const workloadDirectory = process.env.EDUPERF_WORKLOAD_DIR
     || path.join(repositoryRoot, 'workloads');
   const workRoot = process.env.EDUPERF_WORK_DIR || '/local/eduperf/work';
+  const allowlistFile = process.env.EDUPERF_ALLOWED_EMAILS_FILE || '';
+  const authSecretFile = process.env.EDUPERF_AUTH_SECRET_FILE || '';
   const credentialsFile = process.env.EDUPERF_API_CREDENTIALS_FILE
     || process.env.EDUPERF_API_TOKEN_FILE
-    || '/local/eduperf/api-token';
+    || (!allowlistFile ? '/local/eduperf/api-token' : '');
   const worker = new EduPerfWorker({
     workloadDirectory,
     workRoot,
@@ -258,9 +296,15 @@ async function main() {
   });
   await fs.promises.mkdir(workRoot, { recursive: true });
   await worker.cases();
-  const credentials = readCredentials(credentialsFile);
+  const credentials = credentialsFile ? readCredentials(credentialsFile) : [];
+  const authManager = allowlistFile && authSecretFile
+    ? createEmailAuthManager({ allowlistFile, secretFile: authSecretFile })
+    : undefined;
+  if (credentials.length === 0 && !authManager) {
+    throw new Error('No EduPerf authentication method is configured.');
+  }
   const queue = new SerialJobQueue(worker);
-  const handler = createHandler({ queue, worker, credentials });
+  const handler = createHandler({ queue, worker, credentials, authManager });
   const port = Number(process.env.EDUPERF_PORT || 8443);
   const host = process.env.EDUPERF_HOST || '0.0.0.0';
   const certPath = process.env.EDUPERF_TLS_CERT || '';

@@ -7,38 +7,66 @@ OpenSSL, curl, tar, and a persistent systemd user manager.
 ```sh
 git clone https://github.com/proywm/eduperf-cloudlab-deploy.git
 cd eduperf-cloudlab-deploy
-./hosted-node/install.sh 141.215.12.243
+./hosted-node/install.sh 141.215.12.243 \
+  probirr@umich.edu sjiao2@ncsu.edu jit623@lehigh.edu
 ```
 
-The installer builds the fixed workload runtime, rotates the bearer token and
-TLS key, installs `eduperf-backend.service` as a user service, and creates:
+The installer builds the fixed workload runtime, installs
+`eduperf-backend.service` as a user service, and writes the exact email
+allowlist to:
 
 ```text
-~/.local/state/eduperf/connection.json
+~/.config/eduperf/allowed-emails.txt
 ```
 
-The instructor imports that file into the VS Code extension and distributes it
-only to the intended class. Students do not discover or configure the IP
-directly; the connection file supplies the URL, token, certificate, and label.
+The extension already knows the pilot endpoint and pinned HTTPS certificate.
+The student selects **Sign in to Measurement Backend**, enters an allowlisted
+email address, and enters the six-digit code received by email. The resulting
+seven-day session is kept in VS Code SecretStorage. Students do not handle an
+IP address, JSON connection file, password, token, terminal, or Output channel.
 
-For a faculty pilot, pass one stable credential ID per participant:
+The first installation uses a protected on-node outbox so the authentication
+flow can be tested before an email provider is connected. For real delivery,
+edit `~/.config/eduperf/email.env` and add credentials for a verified Resend
+sending domain:
+
+```text
+EDUPERF_RESEND_API_KEY=re_replace_me
+EDUPERF_EMAIL_FROM="EduPerf <login@your-verified-domain.example>"
+```
+
+Then restart the service:
 
 ```sh
-./hosted-node/install.sh 141.215.12.243 \
-  probir sjiao2@ncsu.edu jit623@lehigh.edu
+systemctl --user restart eduperf-backend.service
 ```
 
-The installer creates one independently revocable file per participant under
-`~/.local/state/eduperf/connections/`. Only someone holding one of those files
-can use the backend. The Marketplace extension can remain public because it
-does not embed a backend URL or credential.
+The API key remains only in the node user's mode-0600 configuration file; it is
+never included in the repository or extension. Resend delivery takes
+precedence over the test outbox when both settings are present. The extension
+checks the backend's public authentication status before offering sign-in, so
+it reports a clear instructor-configuration message while real delivery is
+disabled.
+
+For a class, export one email address per line (blank lines and `#` comments are
+ignored) and redeploy with a roster file:
+
+```sh
+./hosted-node/install.sh 141.215.12.243 --allowlist-file course-roster.txt
+```
+
+Removing an address from the allowlist immediately invalidates that person's
+existing signed session. Codes expire after ten minutes, are single-use, allow
+five guesses, and requests are rate-limited per address and source. Sessions
+expire after seven days. The server stores no password and does not retain an
+email-provider credential in its process source.
 
 The runtime comparison works without HPCToolkit. To build the same pinned
 profiling stack without root access, run:
 
 ```sh
 ./hosted-node/install-hpctoolkit.sh
-./hosted-node/install.sh 141.215.12.243
+./hosted-node/install.sh 141.215.12.243 --allowlist-file course-roster.txt
 ```
 
 The first command can take substantial time. It records the resulting prefix
@@ -47,5 +75,6 @@ that prefix to the service. An existing installation can instead be supplied
 through `EDUPERF_HPCTOOLKIT_ROOT`.
 
 The firewall must allow instructor and student clients to reach TCP port 8443.
-Treat every connection file as a password: the backend API exposes only fixed
-case IDs and actions, but anyone possessing a file can submit measurement jobs.
+The backend API exposes only fixed case IDs and allowlisted actions, serializes
+measurements for repeatability, and prevents one signed-in user from reading
+another user's job result.

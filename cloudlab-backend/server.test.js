@@ -5,6 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
+const { EmailAuthManager } = require('./auth');
 const {
   SerialJobQueue,
   createHandler,
@@ -45,6 +46,69 @@ test('compares API tokens without accepting prefixes', () => {
   assert.equal(safeEqual('abc', 'abc'), true);
   assert.equal(safeEqual('abc', 'abcd'), false);
   assert.equal(safeEqual('abc', 'abd'), false);
+});
+
+test('email code signs in without a connection file and isolates each user run', async (context) => {
+  const messages = [];
+  const authManager = new EmailAuthManager({
+    allowedEmails: new Set(['probirr@umich.edu', 'sjiao2@ncsu.edu']),
+    secret: Buffer.alloc(48, 3),
+    mailer: {
+      kind: 'capture',
+      deliveryReady: true,
+      async sendCode(email, code) { messages.push({ email, code }); },
+    },
+    codeGenerator: () => '842019',
+  });
+  const worker = {
+    learningCase: async () => ({}),
+    capabilities: async () => [{ caseId: 'matrix-unrolling', runtime: true, profile: true }],
+    execute: async ({ runId, caseId, action }) => ({ runId, caseId, action }),
+  };
+  const queue = new SerialJobQueue(worker);
+  const server = http.createServer(createHandler({
+    queue, worker, credentials: [], authManager,
+  }));
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  context.after(() => server.close());
+  const port = server.address().port;
+
+  const config = await request(port, 'GET', '/v1/auth/config');
+  assert.equal(config.body.mode, 'email-code');
+  assert.equal(config.body.deliveryReady, true);
+  const requested = await request(port, 'POST', '/v1/auth/request-code', undefined, {
+    email: 'probirr@umich.edu',
+  });
+  assert.equal(requested.status, 202);
+  assert.deepEqual(messages, [{ email: 'probirr@umich.edu', code: '842019' }]);
+  const verified = await request(port, 'POST', '/v1/auth/verify-code', undefined, {
+    email: 'probirr@umich.edu', code: '842019',
+  });
+  assert.equal(verified.status, 200);
+  assert.equal(verified.body.email, 'probirr@umich.edu');
+
+  const cases = await request(port, 'GET', '/v1/cases', verified.body.token);
+  assert.equal(cases.status, 200);
+  assert.equal(cases.body.authenticatedAs, 'probirr@umich.edu');
+  const submitted = await request(port, 'POST', '/v1/runs', verified.body.token, {
+    caseId: 'matrix-unrolling', action: 'run',
+  });
+  assert.equal(submitted.status, 202);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  await request(port, 'POST', '/v1/auth/request-code', undefined, {
+    email: 'sjiao2@ncsu.edu',
+  });
+  const second = await request(port, 'POST', '/v1/auth/verify-code', undefined, {
+    email: 'sjiao2@ncsu.edu', code: '842019',
+  });
+  assert.equal(second.status, 200);
+  assert.equal((await request(
+    port, 'GET', `/v1/runs/${submitted.body.runId}`, second.body.token,
+  )).status, 404);
+  assert.equal((await request(
+    port, 'GET', `/v1/runs/${submitted.body.runId}`, verified.body.token,
+  )).status, 200);
 });
 
 test('loads separate revocable faculty credentials', (context) => {

@@ -26,7 +26,8 @@ uploaded program or arbitrary command.
 3. Instantiate it on the default `m510` node type.
 4. Wait for the experiment to become **Ready**.
 5. As the instructor, download `/local/eduperf/connection.json` from the node
-   and import it with **EduPerf: Connect to CloudLab Backend** in VS Code.
+   and import it with **EduPerf: Import Custom Backend Connection (Advanced)**
+   in VS Code.
 
 The initial Ubuntu launch installs a pinned HPCToolkit stack and can be slow.
 Capture that configured node as a CloudLab project image, then use its URN as
@@ -39,8 +40,9 @@ protocol, isolation model, and operational details.
 
 For a persistent machine that cannot use the root-level CloudLab bootstrap,
 see [hosted-node/README.md](hosted-node/README.md). The hosted installer runs as
-an ordinary user and creates the IP-aware connection file consumed by the VS
-Code extension.
+an ordinary user and provides the extension's allowlisted, passwordless email
+sign-in service. The pilot endpoint is built into the VS Code extension, so
+participants handle neither an IP address nor a JSON credential file.
 
 ## Local validation
 
