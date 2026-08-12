@@ -25,6 +25,9 @@ class EduPerfWorker {
     this.hpctoolkitRoot = options.hpctoolkitRoot || '';
     this.workerLabel = options.workerLabel || process.env.EDUPERF_WORKER_LABEL || 'cloudlab-worker';
     this.nodeType = options.nodeType || process.env.EDUPERF_NODE_TYPE || 'unknown';
+    this.environmentKind = options.environmentKind
+      || process.env.EDUPERF_ENVIRONMENT_KIND
+      || 'cloudlab';
     this.casesPromise = listCases(this.workloadDirectory);
     this.compilations = new Map();
   }
@@ -168,8 +171,10 @@ class EduPerfWorker {
       provenanceKind: 'local',
       onProgress,
     });
-    profile.provenance.kind = 'cloudlab';
-    profile.provenance.label = 'Live CloudLab HPCToolkit profile';
+    profile.provenance.kind = this.environmentKind;
+    profile.provenance.label = this.environmentKind === 'cloudlab'
+      ? 'Live CloudLab HPCToolkit profile'
+      : 'Live hosted HPCToolkit profile';
     profile.provenance.backendRunId = runId;
     profile.provenance.worker = this.workerLabel;
     profile.provenance.nodeType = this.nodeType;
@@ -190,7 +195,7 @@ class EduPerfWorker {
         perfbankId: learningCase.manifest.perfbankId,
         action,
         environment: {
-          kind: 'cloudlab',
+          kind: this.environmentKind,
           worker: this.workerLabel,
           nodeType: this.nodeType,
           platform: `${process.platform} ${process.arch}`,
