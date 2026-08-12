@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly SPACK_COMMIT="570fa283b5787581c6ea4c50ddac7e10c8daa814"
+# Spack v0.23.1 bundles the matching package recipes instead of resolving an
+# independently moving spack-packages repository at installation time.
+readonly SPACK_COMMIT="2bfcc69fa870d3c6919be87593f22647981b648a"
 readonly HPCTOOLKIT_SPEC="hpctoolkit@2024.01.1~viewer~mpi+papi target=haswell"
 readonly DATA_ROOT="${XDG_DATA_HOME:-${HOME}/.local/share}/eduperf"
 readonly CONFIG_ROOT="${XDG_CONFIG_HOME:-${HOME}/.config}/eduperf"
 readonly EDUPERF_SPACK_ROOT="${DATA_ROOT}/spack"
 readonly PREFIX_FILE="${CONFIG_ROOT}/hpctoolkit-prefix"
 
-export SPACK_USER_CONFIG_PATH="${DATA_ROOT}/spack-config"
-export SPACK_USER_CACHE_PATH="${DATA_ROOT}/spack-cache"
+export SPACK_USER_CONFIG_PATH="${DATA_ROOT}/spack-v0.23-config"
+export SPACK_USER_CACHE_PATH="${DATA_ROOT}/spack-v0.23-cache"
 
 for command_name in git python3; do
   if ! command -v "${command_name}" >/dev/null 2>&1; then

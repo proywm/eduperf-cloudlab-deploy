@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Pin both the package recipe collection and HPCToolkit release. Captured
-# CloudLab images retain /opt, so this is normally paid once, not per class.
-readonly SPACK_COMMIT="570fa283b5787581c6ea4c50ddac7e10c8daa814"
+# Spack v0.23.1 bundles its matching package recipes, avoiding an unpinned
+# spack-packages checkout. Captured CloudLab images retain this one-time build.
+readonly SPACK_COMMIT="2bfcc69fa870d3c6919be87593f22647981b648a"
 readonly HPCTOOLKIT_SPEC="hpctoolkit@2024.01.1~viewer~mpi+papi target=haswell"
 readonly EDUPERF_SPACK_ROOT="/opt/eduperf-spack"
 readonly PREFIX_FILE="/opt/eduperf/hpctoolkit-prefix"
 
-export SPACK_USER_CONFIG_PATH="/opt/eduperf-spack-config"
-export SPACK_USER_CACHE_PATH="/opt/eduperf-spack-cache"
+export SPACK_USER_CONFIG_PATH="/opt/eduperf-spack-v0.23-config"
+export SPACK_USER_CACHE_PATH="/opt/eduperf-spack-v0.23-cache"
 
 if [[ -s "${PREFIX_FILE}" ]] && [[ -x "$(<"${PREFIX_FILE}")/bin/hpcrun" ]]; then
   exit 0
