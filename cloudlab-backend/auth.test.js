@@ -83,7 +83,7 @@ test('request rate limits apply per address and per source', async () => {
   );
 
   const perSource = fixture();
-  for (let index = 0; index < 30; index += 1) {
+  for (let index = 0; index < 500; index += 1) {
     await perSource.manager.requestCode(`unknown-${index}@example.edu`, '198.51.100.9');
   }
   await assert.rejects(

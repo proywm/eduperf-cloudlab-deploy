@@ -6,7 +6,7 @@ const CODE_TTL_MS = 10 * 60 * 1000;
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const REQUEST_INTERVAL_MS = 60 * 1000;
 const MAX_REQUESTS_PER_HOUR = 5;
-const MAX_SOURCE_REQUESTS_PER_HOUR = 30;
+const MAX_SOURCE_REQUESTS_PER_HOUR = 500;
 const MAX_VERIFY_ATTEMPTS = 5;
 
 class AuthError extends Error {

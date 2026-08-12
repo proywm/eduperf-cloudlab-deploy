@@ -68,6 +68,10 @@ five guesses, and requests are rate-limited per address and source. Sessions
 expire after seven days. The server stores no password and does not retain an
 email-provider credential in its process source.
 
+The source-address safety limit allows 500 code requests per hour so a class
+sharing one campus NAT address can sign in together; the stricter one-minute
+and five-per-hour limits still apply to each email address.
+
 The runtime comparison works without HPCToolkit. To build the same pinned
 profiling stack without root access, run:
 
