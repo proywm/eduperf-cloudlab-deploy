@@ -43,17 +43,29 @@ async function sha256(filePath) {
 }
 
 async function download(url, destination, label) {
-  const response = await fetch(url, {
-    redirect: 'follow',
-    headers: {
-      Accept: 'application/octet-stream',
-      'User-Agent': 'EduPerf/0.1 dependency builder',
-    },
-  });
-  if (!response.ok || !response.body) {
-    throw new Error(`Could not download ${label} (${response.status} ${response.statusText}).`);
+  let lastError;
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        redirect: 'follow',
+        headers: {
+          Accept: 'application/octet-stream',
+          'User-Agent': 'EduPerf/0.1 dependency builder',
+        },
+      });
+      if (!response.ok || !response.body) {
+        throw new Error(`${response.status} ${response.statusText}`);
+      }
+      await pipeline(response.body, fs.createWriteStream(destination));
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < 4) {
+        await new Promise((resolve) => setTimeout(resolve, attempt * 1_000));
+      }
+    }
   }
-  await pipeline(response.body, fs.createWriteStream(destination));
+  throw new Error(`Could not download ${label} after four attempts (${lastError?.message}).`);
 }
 
 async function installPython(portableDirectory) {
