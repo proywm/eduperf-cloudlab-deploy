@@ -16,10 +16,31 @@ function safeEqual(left, right) {
     && crypto.timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-function readToken(filePath) {
-  const token = fs.readFileSync(filePath, 'utf8').trim();
-  if (token.length < 32) throw new Error('The API token must contain at least 32 characters.');
-  return token;
+function readCredentials(filePath) {
+  const contents = fs.readFileSync(filePath, 'utf8').trim();
+  if (contents.startsWith('{')) {
+    const document = JSON.parse(contents);
+    if (document.schemaVersion !== 1 || !Array.isArray(document.credentials)) {
+      throw new Error('The API credentials file uses an unsupported schema.');
+    }
+    if (document.credentials.length < 1 || document.credentials.length > 100) {
+      throw new Error('The API credentials file must contain 1 to 100 credentials.');
+    }
+    const ids = new Set();
+    return document.credentials.map((credential) => {
+      const id = String(credential.id || '');
+      const label = String(credential.label || '');
+      const token = String(credential.token || '');
+      if (!/^[A-Za-z0-9@._+-]{1,128}$/.test(id) || !label || token.length < 32) {
+        throw new Error('The API credentials file contains an invalid credential.');
+      }
+      if (ids.has(id)) throw new Error(`Duplicate API credential id: ${id}`);
+      ids.add(id);
+      return { id, label, token };
+    });
+  }
+  if (contents.length < 32) throw new Error('The API token must contain at least 32 characters.');
+  return [{ id: 'instructor', label: 'Instructor', token: contents }];
 }
 
 function send(response, status, value) {
@@ -53,6 +74,7 @@ function publicJob(job) {
     runId: job.runId,
     caseId: job.caseId,
     action: job.action,
+    requestedBy: job.requestedBy,
     state: job.state,
     queuedAt: job.queuedAt,
     startedAt: job.startedAt,
@@ -72,13 +94,14 @@ class SerialJobQueue {
     this.running = false;
   }
 
-  enqueue(caseId, action) {
+  enqueue(caseId, action, requestedBy = 'instructor') {
     if (!ACTIONS.has(action)) throw new Error(`Unsupported action: ${action}`);
     const runId = crypto.randomUUID();
     const job = {
       runId,
       caseId,
       action,
+      requestedBy,
       state: 'queued',
       queuedAt: new Date().toISOString(),
       progress: ['Waiting for the dedicated measurement worker'],
@@ -146,7 +169,10 @@ function sanitizeError(error) {
     .slice(0, 4000);
 }
 
-function createHandler({ queue, worker, token }) {
+function createHandler({ queue, worker, token, credentials }) {
+  const acceptedCredentials = credentials || [
+    { id: 'instructor', label: 'Instructor', token },
+  ];
   return async (request, response) => {
     try {
       const url = new URL(request.url, 'https://eduperf.invalid');
@@ -161,8 +187,13 @@ function createHandler({ queue, worker, token }) {
       }
 
       const authorization = request.headers.authorization || '';
-      if (!authorization.startsWith('Bearer ')
-          || !safeEqual(authorization.slice(7), token)) {
+      const suppliedToken = authorization.startsWith('Bearer ')
+        ? authorization.slice(7)
+        : '';
+      const credential = acceptedCredentials.find(
+        (candidate) => safeEqual(suppliedToken, candidate.token),
+      );
+      if (!credential) {
         send(response, 401, { error: 'Unauthorized' });
         return;
       }
@@ -185,7 +216,7 @@ function createHandler({ queue, worker, token }) {
           return;
         }
         await worker.learningCase(body.caseId);
-        const job = queue.enqueue(body.caseId, body.action);
+        const job = queue.enqueue(body.caseId, body.action, credential.id);
         send(response, 202, {
           runId: job.runId,
           state: job.state,
@@ -217,7 +248,9 @@ async function main() {
   const workloadDirectory = process.env.EDUPERF_WORKLOAD_DIR
     || path.join(repositoryRoot, 'workloads');
   const workRoot = process.env.EDUPERF_WORK_DIR || '/local/eduperf/work';
-  const tokenFile = process.env.EDUPERF_API_TOKEN_FILE || '/local/eduperf/api-token';
+  const credentialsFile = process.env.EDUPERF_API_CREDENTIALS_FILE
+    || process.env.EDUPERF_API_TOKEN_FILE
+    || '/local/eduperf/api-token';
   const worker = new EduPerfWorker({
     workloadDirectory,
     workRoot,
@@ -225,9 +258,9 @@ async function main() {
   });
   await fs.promises.mkdir(workRoot, { recursive: true });
   await worker.cases();
-  const token = readToken(tokenFile);
+  const credentials = readCredentials(credentialsFile);
   const queue = new SerialJobQueue(worker);
-  const handler = createHandler({ queue, worker, token });
+  const handler = createHandler({ queue, worker, credentials });
   const port = Number(process.env.EDUPERF_PORT || 8443);
   const host = process.env.EDUPERF_HOST || '0.0.0.0';
   const certPath = process.env.EDUPERF_TLS_CERT || '';
@@ -258,6 +291,7 @@ module.exports = {
   SerialJobQueue,
   createHandler,
   publicJob,
+  readCredentials,
   readJson,
   safeEqual,
   sanitizeError,

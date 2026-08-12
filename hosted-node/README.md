@@ -21,6 +21,18 @@ The instructor imports that file into the VS Code extension and distributes it
 only to the intended class. Students do not discover or configure the IP
 directly; the connection file supplies the URL, token, certificate, and label.
 
+For a faculty pilot, pass one stable credential ID per participant:
+
+```sh
+./hosted-node/install.sh 141.215.12.243 \
+  probir sjiao2@ncsu.edu jit623@lehigh.edu
+```
+
+The installer creates one independently revocable file per participant under
+`~/.local/state/eduperf/connections/`. Only someone holding one of those files
+can use the backend. The Marketplace extension can remain public because it
+does not embed a backend URL or credential.
+
 The runtime comparison works without HPCToolkit. To build the same pinned
 profiling stack without root access, run:
 
@@ -35,5 +47,5 @@ that prefix to the service. An existing installation can instead be supplied
 through `EDUPERF_HPCTOOLKIT_ROOT`.
 
 The firewall must allow instructor and student clients to reach TCP port 8443.
-Treat `connection.json` as a password: the backend API exposes only fixed case
-IDs and actions, but anyone possessing the file can submit measurement jobs.
+Treat every connection file as a password: the backend API exposes only fixed
+case IDs and actions, but anyone possessing a file can submit measurement jobs.
