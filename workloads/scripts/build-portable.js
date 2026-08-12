@@ -89,6 +89,12 @@ async function buildCases(extensionDirectory, portableDirectory) {
     const manifest = learningCase.manifest;
     process.stdout.write(`[${index + 1}/${cppCases.length}] Building ${manifest.id}\n`);
     const staticRuntimeFlags = ['-static-libstdc++', '-static-libgcc'];
+    // GCC 9 implements the final C++20 language features under the provisional
+    // c++2a spelling. Newer GCC and Clang retain that alias, so normalize the
+    // three C++20 bank adapters for older hosted classroom machines.
+    const runnerFlags = (manifest.runner.flags || []).map(
+      (flag) => flag === '-std=c++20' ? '-std=c++2a' : flag,
+    );
     const compilation = manifest.runner.kind === 'cpp-driver'
       ? await compileDriver({
         compiler,
@@ -96,7 +102,7 @@ async function buildCases(extensionDirectory, portableDirectory) {
         buildDirectory: outputDirectory,
         caseId: manifest.id,
         sourceFile: manifest.files.harness,
-        flags: [...manifest.runner.flags, ...staticRuntimeFlags],
+        flags: [...runnerFlags, ...staticRuntimeFlags],
       })
       : await compileCase({
         compiler,
