@@ -146,6 +146,7 @@ Environment=EDUPERF_TLS_CERT=${STATE_ROOT}/tls-cert.pem
 Environment=EDUPERF_TLS_KEY=${STATE_ROOT}/tls-key.pem
 Environment=EDUPERF_HPCTOOLKIT_ROOT=${hpctoolkit_root}
 Environment=EDUPERF_PROFILE_PYTHON=${profile_python}
+Environment=EDUPERF_ALLOW_ANONYMOUS=true
 Environment=EDUPERF_ENVIRONMENT_KIND=hosted
 Environment=EDUPERF_NODE_TYPE=hosted-x86-64
 Environment=EDUPERF_WORKER_LABEL=$(hostname -f)

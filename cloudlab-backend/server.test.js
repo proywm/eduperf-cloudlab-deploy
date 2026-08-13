@@ -13,7 +13,7 @@ const {
   safeEqual,
 } = require('./server');
 
-function request(port, method, route, token, body) {
+function request(port, method, route, token, body, clientId) {
   return new Promise((resolve, reject) => {
     const payload = body === undefined ? undefined : JSON.stringify(body);
     const operation = http.request({
@@ -23,6 +23,7 @@ function request(port, method, route, token, body) {
       path: route,
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(clientId ? { 'X-EduPerf-Client-Id': clientId } : {}),
         ...(payload ? {
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(payload),
@@ -147,6 +148,54 @@ test('email-provider failures do not disclose allowlist membership', async (cont
   process.stderr.write = originalWrite;
   assert.equal(allowed.status, 202);
   assert.deepEqual(allowed.body, unknown.body);
+});
+
+test('anonymous mode runs only fixed cases and isolates client run status', async (context) => {
+  const worker = {
+    learningCase: async (caseId) => {
+      if (caseId !== 'p03') {
+        const error = new Error(`Unknown EduPerf case: ${caseId}`);
+        error.statusCode = 400;
+        throw error;
+      }
+      return {};
+    },
+    capabilities: async () => [{ caseId: 'p03', runtime: true, profile: true }],
+    execute: async ({ runId, caseId, action }) => ({ runId, caseId, action }),
+  };
+  const queue = new SerialJobQueue(worker);
+  const server = http.createServer(createHandler({
+    queue, worker, credentials: [], allowAnonymous: true,
+  }));
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  context.after(() => server.close());
+  const port = server.address().port;
+  const firstClient = '3111de31-47e7-4db7-84d9-86fc40088f42';
+  const secondClient = '61351d2f-5fd4-4a52-b531-d631a279a447';
+
+  const config = await request(port, 'GET', '/v1/auth/config');
+  assert.equal(config.body.mode, 'anonymous-fixed-workloads');
+  assert.equal(config.body.anonymousReady, true);
+  const cases = await request(port, 'GET', '/v1/cases', undefined, undefined, firstClient);
+  assert.equal(cases.status, 200);
+  assert.equal(cases.body.authenticatedAs, `anonymous:${firstClient}`);
+  const submitted = await request(port, 'POST', '/v1/runs', undefined, {
+    caseId: 'p03', action: 'profile',
+  }, firstClient);
+  assert.equal(submitted.status, 202);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal((await request(
+    port, 'GET', `/v1/runs/${submitted.body.runId}`, undefined, undefined, firstClient,
+  )).status, 200);
+  assert.equal((await request(
+    port, 'GET', `/v1/runs/${submitted.body.runId}`, undefined, undefined, secondClient,
+  )).status, 404);
+  assert.equal((await request(port, 'POST', '/v1/runs', undefined, {
+    caseId: 'not-in-bank', action: 'profile',
+  }, firstClient)).status, 400);
+  assert.equal((await request(port, 'POST', '/v1/runs', undefined, {
+    caseId: 'p03', action: 'shell',
+  }, firstClient)).status, 400);
 });
 
 test('loads separate revocable faculty credentials', (context) => {

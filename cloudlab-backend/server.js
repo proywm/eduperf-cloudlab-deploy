@@ -190,7 +190,24 @@ function sanitizeError(error) {
     .slice(0, 4000);
 }
 
-function createHandler({ queue, worker, token, credentials, authManager }) {
+function anonymousCredential(request) {
+  const requestedId = String(request.headers['x-eduperf-client-id'] || '').trim().toLowerCase();
+  if (requestedId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(requestedId)) {
+    const error = new Error('The anonymous client identifier is invalid.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const source = String(request.socket.remoteAddress || 'unknown')
+    .replace(/[^A-Za-z0-9:._-]/g, '')
+    .slice(0, 96);
+  return {
+    id: `anonymous:${requestedId || source || 'unknown'}`,
+    label: 'Anonymous fixed-workload client',
+    anonymous: true,
+  };
+}
+
+function createHandler({ queue, worker, token, credentials, authManager, allowAnonymous = false }) {
   const acceptedCredentials = credentials || [
     { id: 'instructor', label: 'Instructor', token },
   ];
@@ -208,9 +225,18 @@ function createHandler({ queue, worker, token, credentials, authManager }) {
       }
 
       if (request.method === 'GET' && url.pathname === '/v1/auth/config') {
-        send(response, 200, authManager
-          ? { schemaVersion: 1, ...authManager.configuration() }
-          : { schemaVersion: 1, mode: 'connection-file', deliveryReady: false });
+        const authentication = authManager
+          ? authManager.configuration()
+          : { mode: 'connection-file', deliveryReady: false };
+        send(response, 200, {
+          schemaVersion: 1,
+          ...authentication,
+          ...(allowAnonymous ? {
+            mode: 'anonymous-fixed-workloads',
+            anonymousReady: true,
+            restrictions: 'fixed-cases-only',
+          } : { anonymousReady: false }),
+        });
         return;
       }
 
@@ -252,7 +278,8 @@ function createHandler({ queue, worker, token, credentials, authManager }) {
         : '';
       const credential = acceptedCredentials.find(
         (candidate) => safeEqual(suppliedToken, candidate.token),
-      ) || authManager?.authenticate(suppliedToken);
+      ) || authManager?.authenticate(suppliedToken)
+        || (allowAnonymous ? anonymousCredential(request) : undefined);
       if (!credential) {
         send(response, 401, { error: 'Unauthorized' });
         return;
@@ -328,11 +355,12 @@ async function main() {
   const authManager = allowlistFile && authSecretFile
     ? createEmailAuthManager({ allowlistFile, secretFile: authSecretFile })
     : undefined;
-  if (credentials.length === 0 && !authManager) {
+  const allowAnonymous = process.env.EDUPERF_ALLOW_ANONYMOUS === 'true';
+  if (credentials.length === 0 && !authManager && !allowAnonymous) {
     throw new Error('No EduPerf authentication method is configured.');
   }
   const queue = new SerialJobQueue(worker);
-  const handler = createHandler({ queue, worker, credentials, authManager });
+  const handler = createHandler({ queue, worker, credentials, authManager, allowAnonymous });
   const port = Number(process.env.EDUPERF_PORT || 8443);
   const host = process.env.EDUPERF_HOST || '0.0.0.0';
   const certPath = process.env.EDUPERF_TLS_CERT || '';
@@ -361,6 +389,7 @@ if (require.main === module) {
 
 module.exports = {
   SerialJobQueue,
+  anonymousCredential,
   createHandler,
   publicJob,
   readCredentials,

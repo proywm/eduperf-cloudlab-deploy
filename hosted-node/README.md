@@ -20,14 +20,17 @@ allowlist to:
 ```
 
 The extension already knows the pilot endpoint and pinned HTTPS certificate.
-The student selects **Sign in to Measurement Backend**, enters an allowlisted
-email address, and enters the six-digit code received by email. The resulting
-seven-day session is kept in VS Code SecretStorage. Students do not handle an
-IP address, JSON connection file, password, token, terminal, or Output channel.
+Anonymous fixed-workload access is enabled by default, so selecting **Inspect**
+submits the preserved lesson adapter without an email, password, token, JSON
+file, terminal, or Output channel. The service never accepts student code or a
+shell command: requests select one of the 100 installed cases and one of the
+four allowlisted operations. A random per-installation client identifier keeps
+queue limits and run-status URLs isolated without identifying the student.
 
-The first installation uses a protected on-node outbox so the authentication
-flow can be tested before an email provider is connected. For real delivery,
-verify a Resend sending domain and run the interactive setup once:
+Optional faculty email sessions remain available for deployments that want
+named access alongside anonymous classroom use. The first installation uses a
+protected on-node outbox for testing. For real email delivery, verify a Resend
+sending domain and run the interactive setup once:
 
 ```sh
 ./hosted-node/configure-email.sh
@@ -62,9 +65,8 @@ systemctl --user restart eduperf-backend.service
 The API key remains only in the node user's mode-0600 configuration file; it is
 never included in the repository or extension. Resend delivery takes
 precedence over the test outbox when both settings are present. The extension
-checks the backend's public authentication status before offering sign-in, so
-it reports a clear instructor-configuration message while real delivery is
-disabled.
+discovers anonymous access through the backend's public configuration endpoint
+and does not offer a sign-in prompt for the normal classroom path.
 
 For the initial class deployment, export one email address per line (blank lines
 and `#` comments are ignored) and install with the roster file:
@@ -91,10 +93,10 @@ The source-address safety limit allows 500 code requests per hour so a class
 sharing one campus NAT address can sign in together; the stricter one-minute
 and five-per-hour limits still apply to each email address.
 
-Measurements remain serialized on the pinned CPU. Each signed-in user may have
-at most three jobs queued or running, while the shared waiting queue is capped
-at 250 jobs. This prevents one participant from monopolizing the worker while
-leaving room for a large class to submit together.
+Measurements remain serialized on the pinned CPU. Each anonymous installation
+or signed-in user may have at most three jobs queued or running, while the
+shared waiting queue is capped at 250 jobs. This prevents one participant from
+monopolizing the worker while leaving room for a large class to submit together.
 
 The runtime comparison works without HPCToolkit. To build the same pinned
 profiling stack without root access, run:
@@ -111,5 +113,5 @@ through `EDUPERF_HPCTOOLKIT_ROOT`.
 
 The firewall must allow instructor and student clients to reach TCP port 8443.
 The backend API exposes only fixed case IDs and allowlisted actions, serializes
-measurements for repeatability, and prevents one signed-in user from reading
+measurements for repeatability, and prevents one client from reading
 another user's job result.
