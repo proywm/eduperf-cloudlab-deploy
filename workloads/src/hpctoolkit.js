@@ -796,11 +796,29 @@ async function collectPreservedBankProfile({
       const displayName = manifest.code[`${variant}Name`] || sourceName;
       const snippetStart = manifest.code[`${variant}StartLine`];
       const snippetLines = manifest.code[variant].replace(/\n$/, '').split('\n').length;
+      const sourceLines = (await fs.readFile(path.join(workDirectory, sourceName), 'utf8')).split('\n');
+      const displayLines = manifest.code[variant].replace(/\n$/, '').split('\n');
+      const displayPositions = new Map();
+      displayLines.forEach((line, index) => {
+        const normalized = line.trim();
+        if (!normalized) return;
+        const positions = displayPositions.get(normalized) || [];
+        positions.push(index + 1);
+        displayPositions.set(normalized, positions);
+      });
+      const sourceToDisplay = new Map();
+      sourceLines.forEach((line, index) => {
+        const positions = displayPositions.get(line.trim());
+        if (positions?.length === 1) sourceToDisplay.set(index + 1, positions[0]);
+      });
       while (pending.length > 0) {
         const node = pending.pop();
         const isVariantSource = node.source?.file === sourceName
           || (pythonFrames && node.source?.file === 'target.py');
-        if (isVariantSource && Number.isFinite(snippetStart)
+        const mappedLine = isVariantSource && sourceToDisplay.get(node.source.line);
+        if (mappedLine) {
+          node.source = { file: displayName, line: mappedLine };
+        } else if (isVariantSource && Number.isFinite(snippetStart)
             && node.source.line >= snippetStart
             && node.source.line < snippetStart + snippetLines) {
           node.source = {
