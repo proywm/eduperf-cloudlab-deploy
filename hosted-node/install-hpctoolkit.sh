@@ -4,11 +4,14 @@ set -euo pipefail
 # Spack v0.23.1 bundles the matching package recipes instead of resolving an
 # independently moving spack-packages repository at installation time.
 readonly SPACK_COMMIT="2bfcc69fa870d3c6919be87593f22647981b648a"
-readonly HPCTOOLKIT_BASE_SPEC="hpctoolkit@2024.01.1~viewer~mpi+papi"
+readonly HPCTOOLKIT_BASE_SPEC="hpctoolkit@2024.01.1~viewer~mpi+papi+python"
+readonly PYTHON_BASE_SPEC="python@3.11"
 readonly DATA_ROOT="${XDG_DATA_HOME:-${HOME}/.local/share}/eduperf"
 readonly CONFIG_ROOT="${XDG_CONFIG_HOME:-${HOME}/.config}/eduperf"
 readonly EDUPERF_SPACK_ROOT="${DATA_ROOT}/spack"
 readonly PREFIX_FILE="${CONFIG_ROOT}/hpctoolkit-prefix"
+readonly PYTHON_PREFIX_FILE="${CONFIG_ROOT}/hpctoolkit-python-prefix"
+readonly SERVICE_DROPIN="${XDG_CONFIG_HOME:-${HOME}/.config}/systemd/user/eduperf-backend.service.d"
 
 export SPACK_USER_CONFIG_PATH="${DATA_ROOT}/spack-v0.23-config"
 export SPACK_USER_CACHE_PATH="${DATA_ROOT}/spack-v0.23-cache"
@@ -40,12 +43,28 @@ if [[ ! "${compiler_version}" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]]; then
   echo "Could not determine the system g++ version." >&2
   exit 1
 fi
-hpctoolkit_spec="${HPCTOOLKIT_BASE_SPEC}%gcc@=${compiler_version} target=haswell"
+hpctoolkit_spec="${HPCTOOLKIT_BASE_SPEC}%gcc@=${compiler_version} target=haswell ^${PYTHON_BASE_SPEC}"
 spack install --fail-fast "${hpctoolkit_spec}"
 hpctoolkit_prefix="$(spack location -i "${hpctoolkit_spec}")"
+python_prefix="$(spack location -i "${PYTHON_BASE_SPEC}%gcc@=${compiler_version} target=haswell")"
 test -x "${hpctoolkit_prefix}/bin/hpcrun"
+test -x "${python_prefix}/bin/python3.11"
 printf '%s\n' "${hpctoolkit_prefix}" > "${PREFIX_FILE}"
-chmod 0600 "${PREFIX_FILE}"
+printf '%s\n' "${python_prefix}" > "${PYTHON_PREFIX_FILE}"
+chmod 0600 "${PREFIX_FILE}" "${PYTHON_PREFIX_FILE}"
+
+if systemctl --user show-environment >/dev/null 2>&1 \
+    && systemctl --user cat eduperf-backend.service >/dev/null 2>&1; then
+  install -d -m 0755 "${SERVICE_DROPIN}"
+  cat > "${SERVICE_DROPIN}/profiler.conf" <<EOF
+[Service]
+Environment=EDUPERF_HPCTOOLKIT_ROOT=${hpctoolkit_prefix}
+Environment=EDUPERF_PROFILE_PYTHON=${python_prefix}/bin/python3.11
+EOF
+  systemctl --user daemon-reload
+  systemctl --user restart eduperf-backend.service
+  systemctl --user is-active --quiet eduperf-backend.service
+fi
 
 echo "HPCToolkit is ready at ${hpctoolkit_prefix}"
-echo "Rerun hosted-node/install.sh to attach it to the EduPerf service."
+echo "HPCToolkit's matching Python is ready at ${python_prefix}/bin/python3.11"
