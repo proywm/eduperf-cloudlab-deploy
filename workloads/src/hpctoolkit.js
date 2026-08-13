@@ -194,18 +194,24 @@ function parseLogicalMetadata(buffer) {
     offset += 4;
     return value;
   };
-  const readString = () => {
+  const readString = (terminated = false) => {
     const length = readUInt32();
     if (length > 1024 * 1024 || offset + length > buffer.length) {
       throw new Error('HPCToolkit logical metadata contains an invalid string.');
     }
     const value = buffer.subarray(offset, offset + length).toString('utf8');
     offset += length;
+    if (terminated) {
+      if (offset >= buffer.length || buffer[offset] !== 0) {
+        throw new Error('HPCToolkit logical metadata string is not terminated.');
+      }
+      offset += 1;
+    }
     return value;
   };
   while (offset < buffer.length) {
     const id = readUInt32();
-    const functionName = readString();
+    const functionName = readString(true);
     const file = readString();
     const line = readUInt32();
     entries.set(id, { functionName, file: file || undefined, line: line || undefined });
