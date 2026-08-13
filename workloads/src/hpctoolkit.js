@@ -711,11 +711,25 @@ async function collectPreservedVariant({
   const context = normalized?.context?.length
     ? normalized.context
     : visibleSampledContext(parsed, variant);
+  const requestedMetricKeys = [...new Set(parsed.metrics
+    .map((metric) => EVENT_KEYS[metric.name.toUpperCase()])
+    .filter(Boolean))];
+  const metrics = {};
+  let usedWorkloadFallback = !normalized;
+  for (const key of requestedMetricKeys) {
+    if (Number.isFinite(normalized?.metrics?.[key])) metrics[key] = normalized.metrics[key];
+    else if (Number.isFinite(workloadMetrics[key])) {
+      metrics[key] = workloadMetrics[key];
+      usedWorkloadFallback = true;
+    }
+  }
   return {
     runtimeUs: parseRuntime(run.stdout),
     callCount: 1,
-    metrics: normalized?.metrics || workloadMetrics,
-    metricScope: normalized ? 'variant-inclusive' : 'profiled-workload',
+    metrics: addDerivedMetrics(metrics),
+    metricScope: normalized
+      ? usedWorkloadFallback ? 'variant-inclusive with workload fallbacks' : 'variant-inclusive'
+      : 'profiled-workload',
     context,
     samples: Object.fromEntries(parsed.metrics.map((metric) => [metric.name, metric.samples])),
   };
@@ -784,8 +798,9 @@ async function collectPreservedBankProfile({
       const snippetLines = manifest.code[variant].replace(/\n$/, '').split('\n').length;
       while (pending.length > 0) {
         const node = pending.pop();
-        if (pythonFrames && node.source?.file === 'target.py') node.source.file = sourceName;
-        if (node.source?.file === sourceName && Number.isFinite(snippetStart)
+        const isVariantSource = node.source?.file === sourceName
+          || (pythonFrames && node.source?.file === 'target.py');
+        if (isVariantSource && Number.isFinite(snippetStart)
             && node.source.line >= snippetStart
             && node.source.line < snippetStart + snippetLines) {
           node.source = {
