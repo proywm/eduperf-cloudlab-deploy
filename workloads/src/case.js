@@ -261,15 +261,25 @@ async function loadBankCases(extensionPath) {
   if (catalog.schemaVersion !== 1 || !Array.isArray(catalog.cases)) {
     throw new Error('Unsupported or malformed bank catalog.');
   }
-  return catalog.cases.map((entry) => {
+  return Promise.all(catalog.cases.map(async (entry) => {
     const manifest = normalizeBankProfiling(validateBankManifest(entry));
+    const directory = path.join(extensionPath, 'bank', manifest.id);
+    for (const variant of ['before', 'after']) {
+      const fileName = manifest.files[variant] || manifest.files.harness;
+      if (!fileName) continue;
+      const source = await fs.readFile(path.join(directory, fileName), 'utf8');
+      const snippetIndex = source.indexOf(manifest.code[variant]);
+      if (snippetIndex >= 0) {
+        manifest.code[`${variant}StartLine`] = source.slice(0, snippetIndex).split('\n').length;
+      }
+    }
     return {
-      directory: path.join(extensionPath, 'bank', manifest.id),
+      directory,
       manifest,
       beforeCode: manifest.code.before,
       afterCode: manifest.code.after,
     };
-  });
+  }));
 }
 
 async function listCases(extensionPath) {

@@ -777,13 +777,23 @@ async function collectPreservedBankProfile({
           ? undefined
           : (name) => new RegExp(`(?:^|::)v_${variant}::|${variant}`, 'i').test(name),
       });
-      if (pythonFrames) {
-        const pending = [...variants[variant].context];
-        while (pending.length > 0) {
-          const node = pending.pop();
-          if (node.source?.file === 'target.py') node.source.file = manifest.files[variant];
-          pending.push(...node.children);
+      const pending = [...variants[variant].context];
+      const sourceName = manifest.files[variant] || manifest.files.harness;
+      const displayName = manifest.code[`${variant}Name`] || sourceName;
+      const snippetStart = manifest.code[`${variant}StartLine`];
+      const snippetLines = manifest.code[variant].replace(/\n$/, '').split('\n').length;
+      while (pending.length > 0) {
+        const node = pending.pop();
+        if (pythonFrames && node.source?.file === 'target.py') node.source.file = sourceName;
+        if (node.source?.file === sourceName && Number.isFinite(snippetStart)
+            && node.source.line >= snippetStart
+            && node.source.line < snippetStart + snippetLines) {
+          node.source = {
+            file: displayName,
+            line: node.source.line - snippetStart + 1,
+          };
         }
+        pending.push(...node.children);
       }
     }
 
