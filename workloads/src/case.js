@@ -3,6 +3,73 @@ const path = require('node:path');
 
 const DEFAULT_CASE_ID = 'matrix-unrolling';
 
+const BANK_PROFILE_EVENTS = [
+  'CYCLES',
+  'INSTRUCTIONS',
+  'BRANCHES',
+  'BRANCH-MISSES',
+  'CACHE-MISSES',
+];
+
+const BANK_PROFILE_METRICS = [
+  {
+    id: 'cycles',
+    label: 'CPU cycles',
+    unit: 'cycles',
+    direction: 'lower',
+    explanation: 'Estimated cycles for one preserved benchmark execution on the hosted measurement CPU.',
+  },
+  {
+    id: 'instructions',
+    label: 'Instructions',
+    unit: 'instructions',
+    direction: 'lower',
+    explanation: 'Estimated retired instructions for the same preserved workload and interpreter or executable.',
+  },
+  {
+    id: 'ipc',
+    label: 'IPC',
+    unit: 'instructions/cycle',
+    direction: 'higher',
+    explanation: 'Instructions per cycle, derived from the HPCToolkit instruction and cycle estimates.',
+  },
+  {
+    id: 'branches',
+    label: 'Branches',
+    unit: 'branches',
+    direction: 'lower',
+    explanation: 'Estimated branch instructions executed by the preserved workload.',
+  },
+  {
+    id: 'branchMissRate',
+    label: 'Branch-miss rate',
+    unit: '%',
+    direction: 'lower',
+    explanation: 'Estimated branch misses divided by branch instructions.',
+  },
+  {
+    id: 'cacheMisses',
+    label: 'Cache misses',
+    unit: 'misses',
+    direction: 'lower',
+    secondary: true,
+    explanation: 'Estimated cache misses; use this as supporting evidence when the source change affects locality.',
+  },
+];
+
+function normalizeBankProfiling(manifest) {
+  if (manifest.profiling.kind !== 'recorded') return manifest;
+  manifest.profiling = {
+    ...manifest.profiling,
+    kind: 'hosted-hpctoolkit',
+    actionLabel: `Inspect ${manifest.runner.kind === 'python-bench' ? 'Python execution' : 'calling context'}`,
+    events: [...BANK_PROFILE_EVENTS],
+    sampleFrequencyHz: 1009,
+    metrics: BANK_PROFILE_METRICS.map((metric) => ({ ...metric })),
+  };
+  return manifest;
+}
+
 function assertObject(value, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`${label} must be an object.`);
@@ -195,7 +262,7 @@ async function loadBankCases(extensionPath) {
     throw new Error('Unsupported or malformed bank catalog.');
   }
   return catalog.cases.map((entry) => {
-    const manifest = validateBankManifest(entry);
+    const manifest = normalizeBankProfiling(validateBankManifest(entry));
     return {
       directory: path.join(extensionPath, 'bank', manifest.id),
       manifest,
@@ -247,6 +314,8 @@ async function listCases(extensionPath) {
 }
 
 module.exports = {
+  BANK_PROFILE_EVENTS,
+  BANK_PROFILE_METRICS,
   CASE_ID: DEFAULT_CASE_ID,
   DEFAULT_CASE_ID,
   listCases,

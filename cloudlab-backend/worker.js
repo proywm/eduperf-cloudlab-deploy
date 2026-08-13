@@ -3,12 +3,17 @@ const os = require('node:os');
 const path = require('node:path');
 
 const { listCases } = require('../workloads/src/case');
-const { collectHpctoolkitProfile } = require('../workloads/src/hpctoolkit');
+const {
+  collectHpctoolkitProfile,
+  collectPreservedBankProfile,
+} = require('../workloads/src/hpctoolkit');
 const {
   compileCase,
+  compileDriver,
   findBundledCaseExecutable,
   findBundledPython,
   findCompiler,
+  findPython,
   preparePythonWorktree,
   runCppDriver,
   runExecutable,
@@ -23,6 +28,7 @@ class EduPerfWorker {
     this.workloadDirectory = path.resolve(options.workloadDirectory);
     this.workRoot = path.resolve(options.workRoot);
     this.hpctoolkitRoot = options.hpctoolkitRoot || '';
+    this.profilePython = options.profilePython || process.env.EDUPERF_PROFILE_PYTHON || '';
     this.workerLabel = options.workerLabel || process.env.EDUPERF_WORKER_LABEL || 'cloudlab-worker';
     this.nodeType = options.nodeType || process.env.EDUPERF_NODE_TYPE || 'unknown';
     this.environmentKind = options.environmentKind
@@ -48,7 +54,7 @@ class EduPerfWorker {
       caseId: manifest.id,
       perfbankId: manifest.perfbankId,
       runtime: true,
-      profile: manifest.profiling.kind === 'hpctoolkit',
+      profile: ['hpctoolkit', 'hosted-hpctoolkit'].includes(manifest.profiling.kind),
     }));
   }
 
@@ -131,18 +137,28 @@ class EduPerfWorker {
       this.compilations.set(caseId, (async () => {
         const compiler = await findCompiler();
         const buildDirectory = path.join(this.workRoot, 'profile-builds', caseId);
-        const compilation = await compileCase({
-          compiler,
-          caseId,
-          caseDirectory: learningCase.directory,
-          buildDirectory,
-          sourceFiles: [
-            learningCase.manifest.files.before,
-            learningCase.manifest.files.after,
-            learningCase.manifest.files.harness,
-          ],
-          flags: learningCase.manifest.build.flags,
-        });
+        const manifest = learningCase.manifest;
+        const compilation = manifest.runner.kind === 'cpp-driver'
+          ? await compileDriver({
+            compiler,
+            caseId,
+            caseDirectory: learningCase.directory,
+            buildDirectory,
+            sourceFile: manifest.files.harness,
+            flags: manifest.runner.flags,
+          })
+          : await compileCase({
+            compiler,
+            caseId,
+            caseDirectory: learningCase.directory,
+            buildDirectory,
+            sourceFiles: [
+              manifest.files.before,
+              manifest.files.after,
+              manifest.files.harness,
+            ],
+            flags: manifest.build.flags,
+          });
         return { ...compilation, buildDirectory };
       })());
     }
@@ -154,23 +170,55 @@ class EduPerfWorker {
     }
   }
 
-  async runProfile(learningCase, runId, onProgress) {
-    if (learningCase.manifest.profiling.kind !== 'hpctoolkit') {
-      throw new Error(
-        'This case does not yet have a source-attributed CloudLab profiling adapter.',
-      );
+  async runProfile(learningCase, runId, jobDirectory, onProgress) {
+    const { manifest } = learningCase;
+    let profile;
+    if (manifest.profiling.kind === 'hosted-hpctoolkit') {
+      onProgress('Preparing the preserved profiling adapter');
+      if (manifest.runner.kind === 'python-bench') {
+        if (!this.profilePython) {
+          throw new Error('The hosted worker is missing its HPCToolkit-matched Python runtime.');
+        }
+        const python = await findPython(this.profilePython);
+        const workDirectory = await preparePythonWorktree({
+          caseDirectory: learningCase.directory,
+          buildDirectory: path.join(jobDirectory, 'profile'),
+          files: manifest.files,
+        });
+        profile = await collectPreservedBankProfile({
+          learningCase,
+          executable: python,
+          workDirectory,
+          configuredRoot: this.hpctoolkitRoot,
+          provenanceKind: this.environmentKind,
+          onProgress,
+        });
+      } else {
+        const compilation = await this.profilingExecutable(learningCase);
+        profile = await collectPreservedBankProfile({
+          learningCase,
+          executable: compilation.executable,
+          workDirectory: jobDirectory,
+          configuredRoot: this.hpctoolkitRoot,
+          provenanceKind: this.environmentKind,
+          onProgress,
+        });
+      }
+    } else if (manifest.profiling.kind === 'hpctoolkit') {
+      onProgress('Preparing the optimized source-mapped profiling runner');
+      const compilation = await this.profilingExecutable(learningCase);
+      profile = await collectHpctoolkitProfile({
+        learningCase,
+        executable: compilation.executable,
+        buildDirectory: compilation.buildDirectory,
+        configuredRoot: this.hpctoolkitRoot,
+        compiler: compilation.compiler,
+        provenanceKind: this.environmentKind,
+        onProgress,
+      });
+    } else {
+      throw new Error('This case does not provide a hosted HPCToolkit profiling adapter.');
     }
-    onProgress('Preparing the optimized source-mapped profiling runner');
-    const compilation = await this.profilingExecutable(learningCase);
-    const profile = await collectHpctoolkitProfile({
-      learningCase,
-      executable: compilation.executable,
-      buildDirectory: compilation.buildDirectory,
-      configuredRoot: this.hpctoolkitRoot,
-      compiler: compilation.compiler,
-      provenanceKind: 'local',
-      onProgress,
-    });
     profile.provenance.kind = this.environmentKind;
     profile.provenance.label = this.environmentKind === 'cloudlab'
       ? 'Live CloudLab HPCToolkit profile'
@@ -212,7 +260,7 @@ class EduPerfWorker {
         );
       }
       if (action === 'profile' || action === 'run-and-profile') {
-        result.profile = await this.runProfile(learningCase, runId, onProgress);
+        result.profile = await this.runProfile(learningCase, runId, jobDirectory, onProgress);
       }
       return result;
     } finally {

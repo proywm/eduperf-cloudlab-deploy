@@ -33,6 +33,17 @@ verify a Resend sending domain and run the interactive setup once:
 ./hosted-node/configure-email.sh
 ```
 
+Install the pinned hardware-counter profiler once on a long-lived hosted node:
+
+```bash
+./hosted-node/install-profiler.sh
+```
+
+This builds HPCToolkit with its Python logical-calling-context support and a
+matching Python 3.11 runtime, records both paths in the user service, and
+restarts only the backend. CloudLab's repository profile performs the same
+installation automatically during node bootstrap.
+
 The script asks for the verified sender and privately prompts for the API key;
 nothing is placed on the command line or in JSON. Equivalently, an administrator
 can write the following settings to `~/.config/eduperf/email.env`:

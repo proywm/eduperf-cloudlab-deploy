@@ -5,6 +5,8 @@ const path = require('node:path');
 const {
   executeFile,
   findExecutable,
+  parseCppDriver,
+  parsePythonTime,
   parseResult,
 } = require('./runner');
 
@@ -178,6 +180,62 @@ function parseAddr2line(output) {
   return resolved;
 }
 
+function parseLogicalMetadata(buffer) {
+  const magic = Buffer.from('HPCLOGICAL');
+  if (!Buffer.isBuffer(buffer) || buffer.length < magic.length
+      || !buffer.subarray(0, magic.length).equals(magic)) {
+    throw new Error('HPCToolkit logical metadata has an invalid header.');
+  }
+  const entries = new Map();
+  let offset = magic.length;
+  const readUInt32 = () => {
+    if (offset + 4 > buffer.length) throw new Error('HPCToolkit logical metadata is truncated.');
+    const value = buffer.readUInt32BE(offset);
+    offset += 4;
+    return value;
+  };
+  const readString = () => {
+    const length = readUInt32();
+    if (length > 1024 * 1024 || offset + length > buffer.length) {
+      throw new Error('HPCToolkit logical metadata contains an invalid string.');
+    }
+    const value = buffer.subarray(offset, offset + length).toString('utf8');
+    offset += length;
+    return value;
+  };
+  while (offset < buffer.length) {
+    const id = readUInt32();
+    const functionName = readString();
+    const file = readString();
+    const line = readUInt32();
+    entries.set(id, { functionName, file: file || undefined, line: line || undefined });
+  }
+  return entries;
+}
+
+async function resolveLogicalNodes(parsed, measurements) {
+  const measurementRoot = path.resolve(measurements);
+  for (const module of parsed.loadModules.filter((candidate) =>
+    candidate.path.includes(`${path.sep}logical${path.sep}`),
+  )) {
+    const metadataPath = path.resolve(module.path);
+    if (!metadataPath.startsWith(`${measurementRoot}${path.sep}`)) continue;
+    const entries = parseLogicalMetadata(await fs.readFile(metadataPath));
+    for (const node of parsed.nodes.filter((candidate) => candidate.loadModuleId === module.id)) {
+      const address = BigInt(node.address);
+      const logicalId = Number(address >> 32n);
+      const sampledLine = Number(address & 0xffffffffn);
+      const metadata = entries.get(logicalId);
+      if (!metadata) continue;
+      node.resolution = {
+        functionName: metadata.functionName,
+        file: metadata.file,
+        line: sampledLine || metadata.line,
+      };
+    }
+  }
+}
+
 function canonicalAddress(value) {
   try {
     return `0x${BigInt(value).toString(16)}`;
@@ -270,13 +328,17 @@ function buildContext(parsed, applicationNodes, targetFunction, variant) {
     if (!childrenByParent.has(node.parentId)) childrenByParent.set(node.parentId, []);
     childrenByParent.get(node.parentId).push(node);
   }
+  const matchesTarget = typeof targetFunction === 'function'
+    ? targetFunction
+    : (name) => name.startsWith(`${targetFunction}(`);
   const targetNodes = applicationNodes.filter((node) =>
     node.resolution
     && node.resolution.functionName
-    && node.resolution.functionName.startsWith(`${targetFunction}(`),
+    && matchesTarget(node.resolution.functionName),
   );
   if (targetNodes.length === 0) {
-    throw new Error(`HPCToolkit did not resolve samples to ${targetFunction}.`);
+    const label = typeof targetFunction === 'string' ? targetFunction : `${variant} application code`;
+    throw new Error(`HPCToolkit did not resolve samples to ${label}.`);
   }
   const targetIds = new Set(targetNodes.map((node) => node.id));
   const targetRoots = targetNodes.filter((node) => {
@@ -306,7 +368,7 @@ function buildContext(parsed, applicationNodes, targetFunction, variant) {
     entries.set(id, {
       id: `${variant}-${id}`,
       label: shortFunctionName(resolution.functionName || raw.rawLabel),
-      kind: resolution.functionName && resolution.functionName.startsWith(`${targetFunction}(`)
+      kind: resolution.functionName && matchesTarget(resolution.functionName)
         ? 'target'
         : 'caller',
       source: resolution.file && resolution.line
@@ -373,6 +435,103 @@ function buildContext(parsed, applicationNodes, targetFunction, variant) {
     if (entry) sumMetrics(summary, entry.metrics);
   }
   return { context: roots, metrics: addDerivedMetrics(summary) };
+}
+
+function visibleSampledContext(parsed, variant, maximumLeaves = 18) {
+  const nodeById = new Map(parsed.nodes.map((node) => [node.id, node]));
+  const moduleById = new Map(parsed.loadModules.map((module) => [module.id, module]));
+  const scored = parsed.nodes
+    .map((node) => ({
+      node,
+      metrics: normalizedMetrics(node.metrics, parsed.metrics),
+    }))
+    .filter(({ metrics }) => Object.values(metrics).some((value) => Number.isFinite(value) && value > 0))
+    .sort((left, right) =>
+      (right.metrics.cycles || right.metrics.instructions || 0)
+      - (left.metrics.cycles || left.metrics.instructions || 0),
+    )
+    .slice(0, maximumLeaves);
+
+  const included = new Set();
+  for (const { node } of scored) {
+    let cursor = node;
+    let depth = 0;
+    while (cursor && depth < 24) {
+      included.add(cursor.id);
+      cursor = nodeById.get(cursor.parentId);
+      depth += 1;
+    }
+  }
+
+  function nodeLabel(raw) {
+    const resolution = raw.resolution || {};
+    if (resolution.functionName && resolution.functionName !== '??') {
+      return shortFunctionName(resolution.functionName);
+    }
+    if (raw.rawLabel && !['^Primary', '| Main  ', '<program root>'].includes(raw.rawLabel)) {
+      return raw.rawLabel;
+    }
+    const module = moduleById.get(raw.loadModuleId);
+    if (module?.path) return `${path.basename(module.path)} · ${raw.address}`;
+    return raw.rawLabel || 'profiled execution';
+  }
+
+  function sourceFor(raw) {
+    const resolution = raw.resolution || {};
+    if (resolution.file && resolution.line) {
+      return { file: path.basename(resolution.file), line: resolution.line };
+    }
+    const module = moduleById.get(raw.loadModuleId);
+    if (module?.path?.endsWith('.py')) {
+      return { file: path.basename(module.path), line: Number.parseInt(raw.address, 16) || 1 };
+    }
+    return undefined;
+  }
+
+  const entries = new Map();
+  for (const id of included) {
+    const raw = nodeById.get(id);
+    const source = sourceFor(raw);
+    entries.set(id, {
+      id: `${variant}-${id}`,
+      label: nodeLabel(raw),
+      kind: source && ['target.py', 'target_before.py', 'target_after.py'].includes(source.file)
+        ? 'target'
+        : 'caller',
+      source,
+      selfMetrics: normalizedMetrics(raw.metrics, parsed.metrics),
+      metrics: {},
+      children: [],
+      rawParentId: raw.parentId,
+    });
+  }
+
+  const roots = [];
+  for (const entry of entries.values()) {
+    let parent = nodeById.get(entry.rawParentId);
+    while (parent && !entries.has(parent.id)) parent = nodeById.get(parent.parentId);
+    if (parent && entries.has(parent.id)) entries.get(parent.id).children.push(entry);
+    else roots.push(entry);
+    delete entry.rawParentId;
+  }
+
+  function aggregate(entry) {
+    const metrics = { ...entry.selfMetrics };
+    for (const child of entry.children) sumMetrics(metrics, aggregate(child));
+    entry.metrics = addDerivedMetrics(metrics);
+    delete entry.selfMetrics;
+    entry.children.sort((left, right) =>
+      (right.metrics.cycles || right.metrics.instructions || 0)
+      - (left.metrics.cycles || left.metrics.instructions || 0),
+    );
+    return metrics;
+  }
+  roots.forEach(aggregate);
+  roots.sort((left, right) =>
+    (right.metrics.cycles || right.metrics.instructions || 0)
+    - (left.metrics.cycles || left.metrics.instructions || 0),
+  );
+  return roots;
 }
 
 async function findProfileFile(directory) {
@@ -471,6 +630,193 @@ async function collectVariant({
   };
 }
 
+async function collectPreservedVariant({
+  tools,
+  executable,
+  args,
+  cwd,
+  directory,
+  variant,
+  events,
+  frequency,
+  pythonFrames,
+  timeout,
+  signal,
+  environment,
+  parseRuntime,
+  targetMatcher,
+}) {
+  const measurements = path.join(directory, `${variant}-measurements`);
+  const eventArgs = events.flatMap((event) => ['-e', `${event}@f${frequency}`]);
+  let run;
+  try {
+    run = await executeFile(
+      tools.hpcrun,
+      [
+        ...(pythonFrames ? ['-a', 'python'] : []),
+        ...eventArgs,
+        '-o', measurements,
+        executable,
+        ...args,
+      ],
+      {
+        cwd,
+        timeout,
+        signal,
+        maxBuffer: 8 * 1024 * 1024,
+        env: environment,
+      },
+    );
+  } catch (error) {
+    const detail = [error.stderr, error.stdout, error.message].filter(Boolean).join('\n').trim();
+    throw new Error(`HPCToolkit could not collect the ${variant} preserved profile.\n${detail}`);
+  }
+
+  const profileFile = await findProfileFile(measurements);
+  const dump = await executeFile(tools.hpcproftt, ['-g', profileFile], {
+    timeout: 30_000,
+    signal,
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  const parsed = parseHpcproftt(dump.stdout);
+  await resolveLogicalNodes(parsed, measurements);
+  let applicationNodes = [];
+  try {
+    ({ applicationNodes } = await resolveApplicationNodes(
+      parsed,
+      executable,
+      tools.addr2line,
+      signal,
+    ));
+  } catch {
+    // Logical Python frames can be useful even when the interpreter executable
+    // lacks source debug information. They are preserved by the general CCT.
+  }
+
+  let normalized;
+  if (targetMatcher && applicationNodes.length > 0) {
+    try {
+      normalized = buildContext(parsed, applicationNodes, targetMatcher, variant);
+    } catch {
+      normalized = undefined;
+    }
+  }
+  const workloadMetrics = profiledWorkloadMetrics(parsed);
+  const context = normalized?.context?.length
+    ? normalized.context
+    : visibleSampledContext(parsed, variant);
+  return {
+    runtimeUs: parseRuntime(run.stdout),
+    callCount: 1,
+    metrics: normalized?.metrics || workloadMetrics,
+    metricScope: normalized ? 'variant-inclusive' : 'profiled-workload',
+    context,
+    samples: Object.fromEntries(parsed.metrics.map((metric) => [metric.name, metric.samples])),
+  };
+}
+
+async function collectPreservedBankProfile({
+  learningCase,
+  executable,
+  workDirectory,
+  configuredRoot = '',
+  signal,
+  onProgress = () => {},
+  provenanceKind = 'local',
+}) {
+  const tools = await detectHpctoolkit(configuredRoot);
+  const manifest = learningCase.manifest;
+  const events = manifest.profiling.events;
+  const frequency = manifest.profiling.sampleFrequencyHz || 1009;
+  const sessionDirectory = await fs.mkdtemp(path.join(workDirectory, 'hpctoolkit-bank-'));
+  const pythonFrames = manifest.runner.kind === 'python-bench';
+  const environment = {
+    ...process.env,
+    LC_ALL: 'C',
+    PYTHONDONTWRITEBYTECODE: '1',
+    PYTHONHASHSEED: '0',
+    PYTHONNOUSERSITE: '1',
+    PYTHONPATH: '',
+  };
+  try {
+    const variants = {};
+    for (const variant of ['before', 'after']) {
+      onProgress(`Collecting ${variant} hardware events and calling context…`);
+      if (pythonFrames) {
+        await fs.copyFile(
+          path.join(workDirectory, manifest.files[variant]),
+          path.join(workDirectory, 'target.py'),
+        );
+      }
+      variants[variant] = await collectPreservedVariant({
+        tools,
+        executable,
+        args: pythonFrames ? [manifest.files.harness] : [],
+        cwd: workDirectory,
+        directory: sessionDirectory,
+        variant,
+        events,
+        frequency,
+        pythonFrames,
+        timeout: manifest.runner.timeoutMs || 120_000,
+        signal,
+        environment,
+        parseRuntime: pythonFrames
+          ? (stdout) => parsePythonTime(stdout) * 1_000_000
+          : (stdout) => {
+            const benchmark = parseCppDriver(stdout).benchmark;
+            return variant === 'before' ? benchmark.before_us : benchmark.after_us;
+          },
+        targetMatcher: pythonFrames
+          ? undefined
+          : (name) => new RegExp(`(?:^|::)v_${variant}::|${variant}`, 'i').test(name),
+      });
+      if (pythonFrames) {
+        const pending = [...variants[variant].context];
+        while (pending.length > 0) {
+          const node = pending.pop();
+          if (node.source?.file === 'target.py') node.source.file = manifest.files[variant];
+          pending.push(...node.children);
+        }
+      }
+    }
+
+    const hpctoolkitVersion = await toolVersion(tools.hpcrun);
+    const runtimeVersion = await toolVersion(executable);
+    return {
+      schemaVersion: 1,
+      caseId: manifest.id,
+      provenance: {
+        kind: provenanceKind,
+        label: provenanceKind === 'cloudlab'
+          ? 'Live CloudLab HPCToolkit profile'
+          : provenanceKind === 'hosted'
+            ? 'Live hosted HPCToolkit profile'
+            : 'Local HPCToolkit profile',
+        collectedAt: new Date().toISOString(),
+        hpctoolkitVersion,
+        compiler: pythonFrames ? runtimeVersion : 'EduPerf optimized C++ profiling build',
+        buildFlags: pythonFrames ? ['HPCToolkit -a python'] : manifest.runner.flags,
+        platform: `${process.platform} ${process.arch}`,
+        processor: os.cpus()[0]?.model.trim() || 'Unknown processor',
+        events,
+        method: pythonFrames
+          ? 'HPCToolkit statistical hardware-counter sampling with Python logical calling-context unwinding'
+          : 'HPCToolkit statistical hardware-counter sampling with source-resolved C++ calling contexts',
+      },
+      workload: {
+        description: 'one complete execution of the preserved PerfBank benchmark adapter',
+        callsPerVariant: 1,
+        unitLabel: 'adapter run',
+        sameInput: true,
+      },
+      variants,
+    };
+  } finally {
+    await fs.rm(sessionDirectory, { recursive: true, force: true });
+  }
+}
+
 async function collectHpctoolkitProfile({
   learningCase,
   executable,
@@ -550,9 +896,12 @@ module.exports = {
   addDerivedMetrics,
   buildContext,
   collectHpctoolkitProfile,
+  collectPreservedBankProfile,
   detectHpctoolkit,
   parseAddr2line,
   parseHpcproftt,
+  parseLogicalMetadata,
   profiledWorkloadMetrics,
+  visibleSampledContext,
   validateStructure,
 };

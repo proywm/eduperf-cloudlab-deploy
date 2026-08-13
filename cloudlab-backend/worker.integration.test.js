@@ -18,7 +18,8 @@ test('the deployed worker discovers 100 cases and executes a fresh comparison', 
 
   const capabilities = await worker.capabilities();
   assert.equal(capabilities.length, 100);
-  assert.equal(capabilities.filter((entry) => entry.profile).length, 5);
+  assert.equal(capabilities.filter((entry) => entry.profile).length, 100);
+  assert.equal(capabilities.find((entry) => entry.caseId === 'e14').profile, true);
 
   const result = await worker.execute({
     runId: 'integration-run',

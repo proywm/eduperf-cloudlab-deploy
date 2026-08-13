@@ -83,8 +83,12 @@ chmod 0600 "${EDUPERF_STATE}/tls-key.pem"
 chmod 0644 "${EDUPERF_STATE}/tls-cert.pem"
 
 hpctoolkit_root=""
+profile_python=""
 if [[ -s "${EDUPERF_ROOT}/hpctoolkit-prefix" ]]; then
   hpctoolkit_root="$(<"${EDUPERF_ROOT}/hpctoolkit-prefix")"
+fi
+if [[ -s "${EDUPERF_ROOT}/hpctoolkit-python-prefix" ]]; then
+  profile_python="$(<"${EDUPERF_ROOT}/hpctoolkit-python-prefix")/bin/python3.11"
 fi
 
 cat > /etc/systemd/system/eduperf-backend.service <<EOF
@@ -104,6 +108,7 @@ Environment=EDUPERF_API_TOKEN_FILE=${EDUPERF_STATE}/api-token
 Environment=EDUPERF_TLS_CERT=${EDUPERF_STATE}/tls-cert.pem
 Environment=EDUPERF_TLS_KEY=${EDUPERF_STATE}/tls-key.pem
 Environment=EDUPERF_HPCTOOLKIT_ROOT=${hpctoolkit_root}
+Environment=EDUPERF_PROFILE_PYTHON=${profile_python}
 Environment=EDUPERF_ENVIRONMENT_KIND=cloudlab
 Environment=EDUPERF_NODE_TYPE=m510
 Environment=EDUPERF_WORKER_LABEL=${fqdn}

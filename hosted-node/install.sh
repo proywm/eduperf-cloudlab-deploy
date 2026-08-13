@@ -120,8 +120,12 @@ fi
 chmod 0600 "${CONFIG_ROOT}/allowed-emails.txt" "${CONFIG_ROOT}/auth-secret" "${CONFIG_ROOT}/email.env"
 
 hpctoolkit_root="${EDUPERF_HPCTOOLKIT_ROOT:-}"
+profile_python="${EDUPERF_PROFILE_PYTHON:-}"
 if [[ -z "${hpctoolkit_root}" ]] && [[ -s "${CONFIG_ROOT}/hpctoolkit-prefix" ]]; then
   hpctoolkit_root="$(<"${CONFIG_ROOT}/hpctoolkit-prefix")"
+fi
+if [[ -z "${profile_python}" ]] && [[ -s "${CONFIG_ROOT}/hpctoolkit-python-prefix" ]]; then
+  profile_python="$(<"${CONFIG_ROOT}/hpctoolkit-python-prefix")/bin/python3.11"
 fi
 
 cat > "${SERVICE_FILE}" <<EOF
@@ -141,6 +145,7 @@ EnvironmentFile=-${CONFIG_ROOT}/email.env
 Environment=EDUPERF_TLS_CERT=${STATE_ROOT}/tls-cert.pem
 Environment=EDUPERF_TLS_KEY=${STATE_ROOT}/tls-key.pem
 Environment=EDUPERF_HPCTOOLKIT_ROOT=${hpctoolkit_root}
+Environment=EDUPERF_PROFILE_PYTHON=${profile_python}
 Environment=EDUPERF_ENVIRONMENT_KIND=hosted
 Environment=EDUPERF_NODE_TYPE=hosted-x86-64
 Environment=EDUPERF_WORKER_LABEL=$(hostname -f)
