@@ -1,6 +1,7 @@
 import sys
 import time
 import random
+import os
 
 try:
     import target
@@ -10,7 +11,8 @@ except Exception as e:
 
 # Build deterministic input data
 random.seed(0)
-N = 5_000_000  # large enough to dominate runtime
+PROFILE = os.environ.get("EDUPERF_PROFILE") == "1"
+N = 100_000 if PROFILE else 5_000_000  # large enough to dominate runtime
 numbers = [random.random() * 100 for _ in range(N)]
 
 # Warm‑up (optional, not timed)
@@ -21,7 +23,7 @@ except AttributeError:
     sys.exit(0)
 
 # Benchmark
-loops = 10  # adjust to hit ~0.2‑2 seconds
+loops = 3 if PROFILE else 10  # keep Python-frame profiling bounded
 start = time.perf_counter()
 for _ in range(loops):
     target._create(numbers)

@@ -1,4 +1,4 @@
-import sys, time, random, io
+import sys, time, random, io, os
 
 try:
     import target
@@ -12,7 +12,7 @@ if not hasattr(target, 'ContainerIO'):
 
 # deterministic data
 random.seed(0)
-lines_count = 500000
+lines_count = 10000 if os.environ.get("EDUPERF_PROFILE") == "1" else 500000
 line_len = 50
 lines = []
 for _ in range(lines_count):

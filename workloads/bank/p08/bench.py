@@ -1,5 +1,6 @@
 import random
 import time
+import os
 
 from target import consume_response
 
@@ -15,12 +16,16 @@ def make_chunks(rng, n_chunks, chunk_size):
 
 def main():
     rng = random.Random(1234)
+    profile = os.environ.get("EDUPERF_PROFILE") == "1"
     # Many responses, each consumed from a number of socket-sized chunks.
-    responses = [make_chunks(rng, 600, 256) for _ in range(40)]
+    responses = [
+        make_chunks(rng, 100 if profile else 600, 128 if profile else 256)
+        for _ in range(6 if profile else 40)
+    ]
 
     start = time.perf_counter()
     total = 0
-    for _ in range(40):
+    for _ in range(5 if profile else 40):
         for chunks in responses:
             data = consume_response(chunks)
             total += len(data)

@@ -1,5 +1,6 @@
 import time
 import sys
+import os
 
 try:
     import target
@@ -12,7 +13,7 @@ except Exception as e:
 
 # Number of iterations chosen to make the benchmark run between 0.2 and 2 seconds.
 # Adjust if necessary for the target environment.
-ITERATIONS = 200000
+ITERATIONS = 5000 if os.environ.get("EDUPERF_PROFILE") == "1" else 200000
 
 def main():
     start = time.perf_counter()

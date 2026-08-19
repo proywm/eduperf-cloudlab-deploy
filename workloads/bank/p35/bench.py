@@ -1,6 +1,7 @@
 import random
 import time
 import target
+import os
 
 random.seed(1234)
 # Representative large input: many comma-separated tokens with whitespace.
@@ -13,7 +14,7 @@ tokens += ['', '  ', '']
 s = ','.join(tokens)
 
 f = target._split_comma_separated
-ITERS = 20000
+ITERS = 200 if os.environ.get("EDUPERF_PROFILE") == "1" else 20000
 start = time.perf_counter()
 for _ in range(ITERS):
     f(s)

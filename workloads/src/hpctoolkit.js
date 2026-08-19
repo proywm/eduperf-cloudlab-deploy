@@ -24,6 +24,8 @@ const EVENT_KEYS = {
   PAPI_L2_DCM: 'cacheMisses',
 };
 
+const PROFILE_SIZED_PYTHON_CASES = new Set(['e12', 'e32', 'e35', 'p08', 'p35']);
+
 function executableOnPath(name) {
   const pathValue = process.env.PATH || '';
   return Promise.all(
@@ -739,6 +741,7 @@ async function collectPreservedBankProfile({
   learningCase,
   executable,
   workDirectory,
+  sourceDirectory = workDirectory,
   configuredRoot = '',
   signal,
   onProgress = () => {},
@@ -750,6 +753,7 @@ async function collectPreservedBankProfile({
   const frequency = manifest.profiling.sampleFrequencyHz || 1009;
   const sessionDirectory = await fs.mkdtemp(path.join(workDirectory, 'hpctoolkit-bank-'));
   const pythonFrames = manifest.runner.kind === 'python-bench';
+  const profileSizedInput = pythonFrames && PROFILE_SIZED_PYTHON_CASES.has(manifest.id);
   const environment = {
     ...process.env,
     LC_ALL: 'C',
@@ -757,6 +761,11 @@ async function collectPreservedBankProfile({
     PYTHONHASHSEED: '0',
     PYTHONNOUSERSITE: '1',
     PYTHONPATH: '',
+    // A few preserved adapters use multi-million-element timing workloads.
+    // Keep Run & Compare unchanged, but let those adapters select a smaller,
+    // deterministic workload under Python-frame sampling so collection stays
+    // within the classroom request deadline.
+    ...(profileSizedInput ? { EDUPERF_PROFILE: '1' } : {}),
   };
   try {
     const variants = {};
@@ -796,7 +805,7 @@ async function collectPreservedBankProfile({
       const displayName = manifest.code[`${variant}Name`] || sourceName;
       const snippetStart = manifest.code[`${variant}StartLine`];
       const snippetLines = manifest.code[variant].replace(/\n$/, '').split('\n').length;
-      const sourceLines = (await fs.readFile(path.join(workDirectory, sourceName), 'utf8')).split('\n');
+      const sourceLines = (await fs.readFile(path.join(sourceDirectory, sourceName), 'utf8')).split('\n');
       const displayLines = manifest.code[variant].replace(/\n$/, '').split('\n');
       const displayPositions = new Map();
       displayLines.forEach((line, index) => {
@@ -854,10 +863,13 @@ async function collectPreservedBankProfile({
           : 'HPCToolkit statistical hardware-counter sampling with source-resolved C++ calling contexts',
       },
       workload: {
-        description: 'one complete execution of the preserved PerfBank benchmark adapter',
+        description: profileSizedInput
+          ? 'one deterministic profiling execution of the preserved PerfBank adapter using profile-sized parameters'
+          : 'one complete execution of the preserved PerfBank benchmark adapter',
         callsPerVariant: 1,
         unitLabel: 'adapter run',
         sameInput: true,
+        profileSizedInput,
       },
       variants,
     };

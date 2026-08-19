@@ -138,6 +138,19 @@ class EduPerfWorker {
         const compiler = await findCompiler();
         const buildDirectory = path.join(this.workRoot, 'profile-builds', caseId);
         const manifest = learningCase.manifest;
+        const profilingFlags = (manifest.runner.flags || []).map((flag) => {
+          if (flag === '-std=c++20') return '-std=c++2a';
+          if (flag === '-I/usr/include/eigen3') {
+            return `-I${path.join(
+              this.workloadDirectory,
+              'portable',
+              'linux-x64',
+              'dependencies',
+              'eigen-3.4.0',
+            )}`;
+          }
+          return flag;
+        });
         const compilation = manifest.runner.kind === 'cpp-driver'
           ? await compileDriver({
             compiler,
@@ -145,7 +158,7 @@ class EduPerfWorker {
             caseDirectory: learningCase.directory,
             buildDirectory,
             sourceFile: manifest.files.harness,
-            flags: manifest.runner.flags,
+            flags: profilingFlags,
           })
           : await compileCase({
             compiler,
@@ -199,6 +212,7 @@ class EduPerfWorker {
           learningCase,
           executable: compilation.executable,
           workDirectory: jobDirectory,
+          sourceDirectory: learningCase.directory,
           configuredRoot: this.hpctoolkitRoot,
           provenanceKind: this.environmentKind,
           onProgress,
