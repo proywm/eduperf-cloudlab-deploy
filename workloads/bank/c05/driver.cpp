@@ -4,15 +4,25 @@
 #include <vector>
 #include <string>
 #include <cstdint>
+#include <cstdio>
+#include <unistd.h>
 
 static const int REPS = 50;
 static const size_t CONFIG_FILE_IO_BUFFER_SIZE = 4096; // Define the buffer size
 
 class Parameters {
 public:
-    std::string getPrefix() const { return "prefix_"; }
+    std::string getPrefix() const {
+        return "/tmp/eduperf_c05_" + std::to_string(static_cast<long long>(getpid())) + "_";
+    }
     int getWordSize() const { return 10; }
 };
+
+static void cleanupOutputFiles() {
+    const std::string prefix = Parameters().getPrefix();
+    std::remove((prefix + "ScaffoldComponents.txt").c_str());
+    std::remove((prefix + "ScaffoldLengths.txt").c_str());
+}
 
 class ScaffoldContigs {
 public:
@@ -145,7 +155,6 @@ static long long work(int version) {
 }
 
 // ===== fixed harness (appended; do not edit) =====
-#include <cstdio>
 #include <chrono>
 #include <climits>
 #include <algorithm>
@@ -153,24 +162,21 @@ int main(){
     long long c0 = work(0);
     long long c1 = work(1);
     using clk = std::chrono::steady_clock;
-    auto best_of = [](int v)->long long{
-        long long best = LLONG_MAX;
-        for(int r=0;r<9;r++){
-            auto t0=clk::now();
-            volatile long long sink=0;
-            for(int k=0;k<REPS;k++) sink += work(v);
-            auto t1=clk::now();
-            long long ns=std::chrono::duration_cast<std::chrono::nanoseconds>(t1-t0).count();
-            if(ns<best) best=ns;
-        }
-        return best;
+    auto measure = [](int v)->long long{
+        auto t0=clk::now();
+        volatile long long sink=0;
+        for(int k=0;k<REPS;k++) sink += work(v);
+        auto t1=clk::now();
+        return std::chrono::duration_cast<std::chrono::nanoseconds>(t1-t0).count();
     };
-    // interleave before/after to control for drift; take min over passes
-    long long b=LLONG_MAX,a=LLONG_MAX;
-    for(int pass=0;pass<3;pass++){
-        long long bb=best_of(0); if(bb<b) b=bb;
-        long long aa=best_of(1); if(aa<a) a=aa;
+    long long before[9], after[9];
+    for(int r=0;r<9;r++){
+        if(r%2==0){before[r]=measure(0); after[r]=measure(1);}
+        else {after[r]=measure(1); before[r]=measure(0);}
     }
+    std::sort(before, before+9); std::sort(after, after+9);
+    long long b=before[4], a=after[4];
+    cleanupOutputFiles();
     printf("EQUIV=%d\n", (c0==c1)?1:0);
     printf("BEFORE_NS=%lld\n", b);
     printf("AFTER_NS=%lld\n", a);

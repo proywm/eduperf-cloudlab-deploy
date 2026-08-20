@@ -178,7 +178,9 @@ int main() {
     std::sort(ratios.begin(), ratios.end());
     double med = ratios[ratios.size()/2];
 
+    printf("faithful_cases=200000\n");
     printf("faithful_mismatches=%lld\n", mism_faithful);
+    printf("adversarial_cases=200000\n");
     printf("adversarial_mismatches=%lld\n", mism_adversarial);
     if (!first_div.empty()) printf("first_div=%s\n", first_div.c_str());
     printf("median_speedup=%.4f\n", med);

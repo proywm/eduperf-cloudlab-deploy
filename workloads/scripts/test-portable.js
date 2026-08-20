@@ -48,6 +48,7 @@ async function testCpp(extensionDirectory, learningCase, temporaryRoot) {
     const execution = await runCppDriver(executable, {
       cwd,
       timeoutMs: learningCase.manifest.runner.timeoutMs,
+      rounds: 1,
     });
     if (execution.check.status !== 'pass' || !(execution.benchmark.median_speedup > 0)) {
       throw new Error(`${learningCase.manifest.id}: bundled driver failed`);

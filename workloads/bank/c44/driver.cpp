@@ -97,6 +97,7 @@ int main()
 
   const int REP = 200;
   std::vector<double> tb, ta;
+  double before_total = 0.0, after_total = 0.0;
   volatile size_t sink = 0;
 
   for (int r = 0; r < REP; ++r)
@@ -106,14 +107,16 @@ int main()
       auto t0 = std::chrono::high_resolution_clock::now();
       for (auto& f : frames) { v_before::copy_to_buffer(buf, f.data(), (u32)f.size()); sink += buf.size(); }
       auto t1 = std::chrono::high_resolution_clock::now();
-      tb.push_back(std::chrono::duration<double, std::nano>(t1 - t0).count());
+      double elapsed = std::chrono::duration<double, std::nano>(t1 - t0).count();
+      tb.push_back(elapsed); before_total += elapsed;
     }
     {
       std::vector<u8> buf; buf.reserve(1518);
       auto t0 = std::chrono::high_resolution_clock::now();
       for (auto& f : frames) { v_after::copy_to_buffer(buf, f.data(), (u32)f.size()); sink += buf.size(); }
       auto t1 = std::chrono::high_resolution_clock::now();
-      ta.push_back(std::chrono::duration<double, std::nano>(t1 - t0).count());
+      double elapsed = std::chrono::duration<double, std::nano>(t1 - t0).count();
+      ta.push_back(elapsed); after_total += elapsed;
     }
   }
 
@@ -121,7 +124,7 @@ int main()
   std::sort(ta.begin(), ta.end());
   double mb = tb[tb.size()/2];
   double ma = ta[ta.size()/2];
-  printf("median_before_ns=%.0f median_after_ns=%.0f speedup=%.4f sink=%zu\n",
-         mb, ma, mb/ma, (size_t)sink);
+  printf("MEDIAN_SAMPLE_B_NS=%.0f MEDIAN_SAMPLE_A_NS=%.0f sink=%zu\n", mb, ma, (size_t)sink);
+  printf("BEFORE_NS=%.0f\nAFTER_NS=%.0f\nSPEEDUP=%.4f\n", before_total, after_total, before_total/after_total);
   return 0;
 }

@@ -273,6 +273,36 @@ function parsePythonTime(output) {
 
 function parseEquivalence(output) {
   const text = String(output || '');
+  const faithfulMatch = text.match(/\bfaithful_mismatches\s*[:=]\s*(\d+)/i);
+  if (faithfulMatch) {
+    const faithfulMismatches = Number(faithfulMatch[1]);
+    const adversarialMatch = text.match(/\badversarial_mismatches\s*[:=]\s*(\d+)/i);
+    const faithfulCasesMatch = text.match(/\bfaithful_cases\s*[:=]\s*(\d+)/i);
+    const adversarialCasesMatch = text.match(/\badversarial_cases\s*[:=]\s*(\d+)/i);
+    const domains = [{
+      id: 'preserved-precondition',
+      label: 'Within the stated precondition',
+      cases: faithfulCasesMatch ? Number(faithfulCasesMatch[1]) : undefined,
+      mismatches: faithfulMismatches,
+      validForDecision: true,
+    }];
+    if (adversarialMatch) {
+      domains.push({
+        id: 'outside-precondition',
+        label: 'Outside the stated precondition',
+        cases: adversarialCasesMatch ? Number(adversarialCasesMatch[1]) : undefined,
+        mismatches: Number(adversarialMatch[1]),
+        validForDecision: false,
+      });
+    }
+    return {
+      status: faithfulMismatches === 0 ? 'pass' : 'fail',
+      kind: 'fresh',
+      cases: faithfulCasesMatch ? Number(faithfulCasesMatch[1]) : undefined,
+      scope: 'stated-precondition',
+      domains,
+    };
+  }
   const negative = [
     /EQUIV(?:ALENT)?\s*[:=]\s*(?:no|false|0)\b/i,
     /EQUIV_FAIL\b/i,
@@ -478,14 +508,51 @@ function parseCppDriver(output) {
 }
 
 async function runCppDriver(executable, options = {}) {
+  const requestedRounds = Math.max(1, Math.min(9, Number(options.rounds) || 5));
+  const maxTotalMs = Math.max(1_000, Number(options.maxTotalMs) || 30_000);
   try {
-    const execution = await executeFile(executable, [], {
-      timeout: options.timeoutMs || 90_000,
-      signal: options.signal,
-      cwd: options.cwd,
-      env: { ...process.env, LC_ALL: 'C', ...(options.env || {}) },
-    });
-    return { ...parseCppDriver(execution.stdout), stdout: execution.stdout, stderr: execution.stderr };
+    const parsed = [];
+    const outputs = [];
+    const startedAt = Date.now();
+    for (let round = 0; round < requestedRounds; round += 1) {
+      options.onRound?.(round + 1, requestedRounds);
+      const execution = await executeFile(executable, [], {
+        timeout: options.timeoutMs || 90_000,
+        signal: options.signal,
+        cwd: options.cwd,
+        env: { ...process.env, LC_ALL: 'C', ...(options.env || {}) },
+      });
+      const result = parseCppDriver(execution.stdout);
+      if (result.check.status !== 'pass') throw new Error('Behavior differs; repeated timing was stopped.');
+      parsed.push(result);
+      outputs.push(execution);
+      const elapsedMs = Date.now() - startedAt;
+      const expectedNextMs = elapsedMs / parsed.length;
+      if (round + 1 < requestedRounds && elapsedMs + expectedNextMs > maxTotalMs) break;
+    }
+    const rounds = parsed.length;
+    const speedups = parsed.map((entry) => entry.benchmark.median_speedup);
+    const beforeUs = parsed.map((entry) => entry.benchmark.before_us).filter(Number.isFinite);
+    const afterUs = parsed.map((entry) => entry.benchmark.after_us).filter(Number.isFinite);
+    const first = parsed[0];
+    return {
+      check: first.check,
+      benchmark: {
+        status: 'pass',
+        rounds,
+        protocol: 'repeated-preserved-driver',
+        median_speedup: median(speedups),
+        ...(beforeUs.length === rounds ? { before_us: median(beforeUs) } : {}),
+        ...(afterUs.length === rounds ? { after_us: median(afterUs) } : {}),
+        samples: {
+          before: beforeUs.map((microseconds) => microseconds / 1_000_000),
+          after: afterUs.map((microseconds) => microseconds / 1_000_000),
+        },
+        speedup_samples: speedups,
+      },
+      stdout: outputs.map((entry) => entry.stdout).join('\n'),
+      stderr: outputs.map((entry) => entry.stderr).filter(Boolean).join('\n'),
+    };
   } catch (error) {
     throw formatFailure('The preserved C++ measurement driver failed.', error);
   }

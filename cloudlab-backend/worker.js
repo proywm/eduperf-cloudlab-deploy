@@ -104,6 +104,10 @@ class EduPerfWorker {
       const execution = await runCppDriver(executable, {
         cwd: jobDirectory,
         timeoutMs: manifest.runner.timeoutMs,
+        rounds: verifyOnly ? 1 : 5,
+        onRound: verifyOnly ? undefined : (round, rounds) => onProgress(
+          `Repeating preserved C++ timing, round ${round}/${rounds}`,
+        ),
       });
       if (execution.check.status !== 'pass') throw new Error('Behavior differs; remote timing was stopped.');
       return {
@@ -284,12 +288,21 @@ class EduPerfWorker {
 }
 
 function cleanCheck(check) {
+  const domains = Array.isArray(check.domains) ? check.domains.slice(0, 8).map((domain) => ({
+    id: String(domain.id || '').slice(0, 80),
+    label: String(domain.label || '').slice(0, 160),
+    cases: Number.isFinite(domain.cases) ? domain.cases : undefined,
+    mismatches: Number.isFinite(domain.mismatches) ? domain.mismatches : undefined,
+    validForDecision: domain.validForDecision === true,
+  })) : undefined;
   return {
     status: check.status,
     kind: check.kind,
     cases: check.cases,
     message: check.message,
+    scope: check.scope === 'stated-precondition' ? check.scope : undefined,
+    domains,
   };
 }
 
-module.exports = { ACTIONS, EduPerfWorker };
+module.exports = { ACTIONS, EduPerfWorker, cleanCheck };

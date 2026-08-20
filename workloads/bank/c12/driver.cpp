@@ -47,7 +47,7 @@ namespace v_after {
     }
 }
 
-static const int REPS = 50;
+static const int REPS = 100;
 
 static long long work(int version) {
     std::vector<int> src(1000);
@@ -83,24 +83,20 @@ int main(){
     long long c0 = work(0);
     long long c1 = work(1);
     using clk = std::chrono::steady_clock;
-    auto best_of = [](int v)->long long{
-        long long best = LLONG_MAX;
-        for(int r=0;r<9;r++){
-            auto t0=clk::now();
-            volatile long long sink=0;
-            for(int k=0;k<REPS;k++) sink += work(v);
-            auto t1=clk::now();
-            long long ns=std::chrono::duration_cast<std::chrono::nanoseconds>(t1-t0).count();
-            if(ns<best) best=ns;
-        }
-        return best;
+    auto measure = [](int v)->long long{
+        auto t0=clk::now();
+        volatile long long sink=0;
+        for(int k=0;k<REPS;k++) sink += work(v);
+        auto t1=clk::now();
+        return std::chrono::duration_cast<std::chrono::nanoseconds>(t1-t0).count();
     };
-    // interleave before/after to control for drift; take min over passes
-    long long b=LLONG_MAX,a=LLONG_MAX;
-    for(int pass=0;pass<3;pass++){
-        long long bb=best_of(0); if(bb<b) b=bb;
-        long long aa=best_of(1); if(aa<a) a=aa;
+    long long before[9], after[9];
+    for(int r=0;r<9;r++){
+        if(r%2==0){before[r]=measure(0); after[r]=measure(1);}
+        else {after[r]=measure(1); before[r]=measure(0);}
     }
+    std::sort(before, before+9); std::sort(after, after+9);
+    long long b=before[4], a=after[4];
     printf("EQUIV=%d\n", (c0==c1)?1:0);
     printf("BEFORE_NS=%lld\n", b);
     printf("AFTER_NS=%lld\n", a);

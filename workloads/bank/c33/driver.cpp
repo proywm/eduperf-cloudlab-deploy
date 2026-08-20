@@ -220,7 +220,7 @@ int main() {
         sink += (unsigned)m.size() + e;
       }
       auto t1 = std::chrono::high_resolution_clock::now();
-      before_ns.push_back(std::chrono::duration<double, std::nano>(t1 - t0).count() / WORK);
+      before_ns.push_back(std::chrono::duration<double, std::nano>(t1 - t0).count());
     }
     {
       auto t0 = std::chrono::high_resolution_clock::now();
@@ -230,7 +230,7 @@ int main() {
         sink += (unsigned)m.size() + e;
       }
       auto t1 = std::chrono::high_resolution_clock::now();
-      after_ns.push_back(std::chrono::duration<double, std::nano>(t1 - t0).count() / WORK);
+      after_ns.push_back(std::chrono::duration<double, std::nano>(t1 - t0).count());
     }
   }
   std::sort(before_ns.begin(), before_ns.end());

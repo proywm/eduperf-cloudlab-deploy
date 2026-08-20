@@ -174,6 +174,7 @@ int main() {
 
     const int iters = 3000;
     std::vector<double> rb, ra;
+    double before_total = 0.0, after_total = 0.0;
     volatile size_t sink = 0;
     for (int rep = 0; rep < iters; ++rep) {
         auto t0 = std::chrono::high_resolution_clock::now();
@@ -188,15 +189,18 @@ int main() {
         auto t3 = std::chrono::high_resolution_clock::now();
         sink += g_out.size();
 
-        rb.push_back((double)std::chrono::duration_cast<std::chrono::nanoseconds>(t1-t0).count());
-        ra.push_back((double)std::chrono::duration_cast<std::chrono::nanoseconds>(t3-t2).count());
+        double before_elapsed = (double)std::chrono::duration_cast<std::chrono::nanoseconds>(t1-t0).count();
+        double after_elapsed = (double)std::chrono::duration_cast<std::chrono::nanoseconds>(t3-t2).count();
+        rb.push_back(before_elapsed); ra.push_back(after_elapsed);
+        before_total += before_elapsed; after_total += after_elapsed;
     }
     std::sort(rb.begin(), rb.end());
     std::sort(ra.begin(), ra.end());
     double mb = rb[rb.size()/2];
     double ma = ra[ra.size()/2];
-    std::cout << "BEFORE_ns=" << mb << " AFTER_ns=" << ma << "\n";
-    std::cout << "SPEEDUP=" << (mb/ma) << "\n";
+    std::cout << "MEDIAN_SAMPLE_B_NS=" << mb << " MEDIAN_SAMPLE_A_NS=" << ma << "\n";
+    std::cout << "BEFORE_NS=" << before_total << "\nAFTER_NS=" << after_total << "\n";
+    std::cout << "SPEEDUP=" << (before_total/after_total) << "\n";
     std::cout << "sink=" << sink << "\n";
     return 0;
 }

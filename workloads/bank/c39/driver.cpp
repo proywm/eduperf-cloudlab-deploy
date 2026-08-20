@@ -52,6 +52,7 @@ int main() {
     volatile long sink = 0;
     const int REPS = 400;
     std::vector<double> before_times, after_times;
+    double before_total = 0.0, after_total = 0.0;
     for (int r = 0; r < REPS; ++r) {
         {
             auto t0 = std::chrono::high_resolution_clock::now();
@@ -59,7 +60,8 @@ int main() {
             for (int x : inputs) s += v_before::Sign(x);
             auto t1 = std::chrono::high_resolution_clock::now();
             sink += s;
-            before_times.push_back(std::chrono::duration<double,std::nano>(t1-t0).count());
+            double elapsed = std::chrono::duration<double,std::nano>(t1-t0).count();
+            before_times.push_back(elapsed); before_total += elapsed;
         }
         {
             auto t0 = std::chrono::high_resolution_clock::now();
@@ -67,13 +69,15 @@ int main() {
             for (int x : inputs) s += v_after::Sign(x);
             auto t1 = std::chrono::high_resolution_clock::now();
             sink += s;
-            after_times.push_back(std::chrono::duration<double,std::nano>(t1-t0).count());
+            double elapsed = std::chrono::duration<double,std::nano>(t1-t0).count();
+            after_times.push_back(elapsed); after_total += elapsed;
         }
     }
     std::sort(before_times.begin(), before_times.end());
     std::sort(after_times.begin(), after_times.end());
     double mb = before_times[before_times.size()/2];
     double ma = after_times[after_times.size()/2];
-    printf("median_before_ns=%.1f median_after_ns=%.1f speedup=%.3f sink=%ld\n", mb, ma, mb/ma, (long)sink);
+    printf("MEDIAN_SAMPLE_B_NS=%.1f MEDIAN_SAMPLE_A_NS=%.1f sink=%ld\n", mb, ma, (long)sink);
+    printf("BEFORE_NS=%.1f\nAFTER_NS=%.1f\nSPEEDUP=%.3f\n", before_total, after_total, before_total/after_total);
     return 0;
 }

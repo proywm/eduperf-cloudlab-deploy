@@ -79,8 +79,8 @@ int main() {
         auto t1=chrono::high_resolution_clock::now();
         for(int k=0;k<ITERS;++k){ auto v=v_after::build(f); sink+=v.size(); }
         auto t2=chrono::high_resolution_clock::now();
-        rb.push_back(chrono::duration<double,nano>(t1-t0).count()/ITERS);
-        ra.push_back(chrono::duration<double,nano>(t2-t1).count()/ITERS);
+        rb.push_back(chrono::duration<double,nano>(t1-t0).count());
+        ra.push_back(chrono::duration<double,nano>(t2-t1).count());
     }
     sort(rb.begin(),rb.end()); sort(ra.begin(),ra.end());
     double mb=rb[rb.size()/2], ma=ra[ra.size()/2];

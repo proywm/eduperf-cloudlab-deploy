@@ -145,18 +145,21 @@ int main() {
   volatile int sink = 0;
   const int reps = 4000;
   std::vector<long long> before_ns, after_ns;
+  long long before_total = 0, after_total = 0;
   for (int r = 0; r < reps; ++r) {
     {
       auto t0 = std::chrono::high_resolution_clock::now();
       for (auto& in : inputs) sink ^= v_before::is_unsupported(in);
       auto t1 = std::chrono::high_resolution_clock::now();
-      before_ns.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count());
+      long long elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
+      before_ns.push_back(elapsed); before_total += elapsed;
     }
     {
       auto t0 = std::chrono::high_resolution_clock::now();
       for (auto& in : inputs) sink ^= v_after::is_unsupported(in);
       auto t1 = std::chrono::high_resolution_clock::now();
-      after_ns.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count());
+      long long elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
+      after_ns.push_back(elapsed); after_total += elapsed;
     }
   }
   std::sort(before_ns.begin(), before_ns.end());
@@ -170,8 +173,9 @@ int main() {
     for (unsigned char c : divergent) std::cout << (int)c << ",";
     std::cout << "\n";
   }
-  std::cout << "median_before_ns=" << mb << " median_after_ns=" << ma << "\n";
-  std::cout << "SPEEDUP=" << (mb/ma) << "\n";
+  std::cout << "MEDIAN_SAMPLE_B_NS=" << mb << " MEDIAN_SAMPLE_A_NS=" << ma << "\n";
+  std::cout << "BEFORE_NS=" << before_total << "\nAFTER_NS=" << after_total << "\n";
+  std::cout << "SPEEDUP=" << ((double)before_total/after_total) << "\n";
   std::cout << "sink=" << sink << "\n";
   return 0;
 }

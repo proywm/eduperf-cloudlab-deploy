@@ -1940,7 +1940,7 @@
       "order": 223,
       "tier": "C++",
       "icon": "symbol-operator",
-      "title": "3DWorld · Special case optimization of gen_cone_triangles() for single sided lighting wi",
+      "title": "3DWorld · gen_cone_triangles common-case path",
       "subtitle": "Loop-invariant code motion: hoisting a condition out of the loop lowers the per-iteration instruction cost of an O(n) loop.",
       "language": "C++",
       "course": "CIS 310 Computer Organization & Assembly",
