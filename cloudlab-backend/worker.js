@@ -256,7 +256,7 @@ class EduPerfWorker {
     try {
       const result = {
         schemaVersion: 1,
-        evidenceProtocol: 2,
+        evidenceProtocol: 3,
         runId,
         caseId,
         perfbankId: learningCase.manifest.perfbankId,

@@ -333,6 +333,21 @@ function selectScopedMetrics(normalized, workloadMetrics, requestedMetricKeys) {
   };
 }
 
+function harmonizeVariantScopes(variants) {
+  const before = variants?.before;
+  const after = variants?.after;
+  if (!before || !after) return variants;
+  if (before.metricScope !== after.metricScope) {
+    for (const variant of [before, after]) {
+      variant.metrics = addDerivedMetrics({ ...(variant.profiledWorkloadMetrics || {}) });
+      variant.metricScope = 'profiled-workload';
+    }
+  }
+  delete before.profiledWorkloadMetrics;
+  delete after.profiledWorkloadMetrics;
+  return variants;
+}
+
 function matchesAdaptedVariantTarget(name, variant) {
   return new RegExp(`(?:^|::)v_${variant}::`).test(String(name || ''));
 }
@@ -649,6 +664,7 @@ async function collectVariant({
     callCount: execution.calls,
     metrics: normalized.metrics,
     metricScope: useWorkloadMetrics ? 'profiled-workload' : 'target-inclusive',
+    profiledWorkloadMetrics: workloadMetrics,
     context: normalized.context,
     samples: Object.fromEntries(parsed.metrics.map((metric) => [metric.name, metric.samples])),
   };
@@ -741,6 +757,7 @@ async function collectPreservedVariant({
     callCount: 1,
     metrics: scoped.metrics,
     metricScope: scoped.metricScope,
+    profiledWorkloadMetrics: workloadMetrics,
     context,
     samples: Object.fromEntries(parsed.metrics.map((metric) => [metric.name, metric.samples])),
   };
@@ -851,6 +868,11 @@ async function collectPreservedBankProfile({
       }
     }
 
+    // Before/After percentages require the same attribution scope. When only
+    // one variant sampled the edited routine, compare both at whole-workload
+    // scope while preserving any target path as qualitative attribution.
+    harmonizeVariantScopes(variants);
+
     const hpctoolkitVersion = await toolVersion(tools.hpcrun);
     const runtimeVersion = await toolVersion(executable);
     return {
@@ -932,6 +954,7 @@ async function collectHpctoolkitProfile({
     if (variants.before.callCount !== variants.after.callCount) {
       throw new Error('The before and after HPCToolkit workloads used different call counts.');
     }
+    harmonizeVariantScopes(variants);
 
     const hpctoolkitVersion = await toolVersion(tools.hpcrun);
     const compilerVersion = await toolVersion(compiler);
@@ -975,6 +998,7 @@ module.exports = {
   parseHpcproftt,
   parseLogicalMetadata,
   profiledWorkloadMetrics,
+  harmonizeVariantScopes,
   matchesAdaptedVariantTarget,
   selectScopedMetrics,
   visibleSampledContext,

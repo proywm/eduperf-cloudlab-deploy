@@ -2,7 +2,11 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const { cleanCheck } = require('./worker');
-const { matchesAdaptedVariantTarget, selectScopedMetrics } = require('../workloads/src/hpctoolkit');
+const {
+  harmonizeVariantScopes,
+  matchesAdaptedVariantTarget,
+  selectScopedMetrics,
+} = require('../workloads/src/hpctoolkit');
 const { parseResult } = require('../workloads/src/runner');
 
 test('preserves bounded conditional behavior domains in API results', () => {
@@ -61,6 +65,35 @@ test('keeps all profile metrics on one attribution scope', () => {
     metrics: { instructions: 900, cycles: 450, ipc: 2, branchMissRate: null },
     metricScope: 'profiled-workload',
   });
+});
+
+test('harmonizes mismatched variant scopes before comparing metrics', () => {
+  const variants = {
+    before: {
+      metricScope: 'variant-inclusive',
+      metrics: { instructions: 120, cycles: 80, ipc: 1.5 },
+      profiledWorkloadMetrics: { instructions: 1200, cycles: 800 },
+      context: [{ kind: 'target', label: 'v_before::target' }],
+    },
+    after: {
+      metricScope: 'profiled-workload',
+      metrics: { instructions: 900, cycles: 700 },
+      profiledWorkloadMetrics: { instructions: 900, cycles: 700 },
+      context: [],
+    },
+  };
+  harmonizeVariantScopes(variants);
+  assert.equal(variants.before.metricScope, 'profiled-workload');
+  assert.equal(variants.after.metricScope, 'profiled-workload');
+  assert.deepEqual(variants.before.metrics, {
+    instructions: 1200, cycles: 800, ipc: 1.5, branchMissRate: null,
+  });
+  assert.deepEqual(variants.after.metrics, {
+    instructions: 900, cycles: 700, ipc: 900 / 700, branchMissRate: null,
+  });
+  assert.equal(variants.before.profiledWorkloadMetrics, undefined);
+  assert.equal(variants.after.profiledWorkloadMetrics, undefined);
+  assert.equal(variants.before.context[0].kind, 'target');
 });
 
 test('preserves seven round samples emitted by an enhanced adapter', () => {
