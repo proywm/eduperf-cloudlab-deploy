@@ -321,6 +321,22 @@ function profiledWorkloadMetrics(parsed) {
   return addDerivedMetrics(total);
 }
 
+function selectScopedMetrics(normalized, workloadMetrics, requestedMetricKeys) {
+  const metricSource = normalized ? normalized.metrics : workloadMetrics;
+  const metrics = {};
+  for (const key of requestedMetricKeys) {
+    if (Number.isFinite(metricSource?.[key])) metrics[key] = metricSource[key];
+  }
+  return {
+    metrics: addDerivedMetrics(metrics),
+    metricScope: normalized ? 'variant-inclusive' : 'profiled-workload',
+  };
+}
+
+function matchesAdaptedVariantTarget(name, variant) {
+  return new RegExp(`(?:^|::)v_${variant}::`).test(String(name || ''));
+}
+
 function shortFunctionName(name) {
   if (!name || name === '??') {
     return 'application code';
@@ -716,22 +732,15 @@ async function collectPreservedVariant({
   const requestedMetricKeys = [...new Set(parsed.metrics
     .map((metric) => EVENT_KEYS[metric.name.toUpperCase()])
     .filter(Boolean))];
-  const metrics = {};
-  let usedWorkloadFallback = !normalized;
-  for (const key of requestedMetricKeys) {
-    if (Number.isFinite(normalized?.metrics?.[key])) metrics[key] = normalized.metrics[key];
-    else if (Number.isFinite(workloadMetrics[key])) {
-      metrics[key] = workloadMetrics[key];
-      usedWorkloadFallback = true;
-    }
-  }
+  // Keep every value in a variant on one attribution scope. Combining, for
+  // example, target instructions with whole-workload cycles produces an IPC
+  // that describes no real execution scope and can even make rates impossible.
+  const scoped = selectScopedMetrics(normalized, workloadMetrics, requestedMetricKeys);
   return {
     runtimeUs: parseRuntime(run.stdout),
     callCount: 1,
-    metrics: addDerivedMetrics(metrics),
-    metricScope: normalized
-      ? usedWorkloadFallback ? 'variant-inclusive with workload fallbacks' : 'variant-inclusive'
-      : 'profiled-workload',
+    metrics: scoped.metrics,
+    metricScope: scoped.metricScope,
     context,
     samples: Object.fromEntries(parsed.metrics.map((metric) => [metric.name, metric.samples])),
   };
@@ -798,7 +807,10 @@ async function collectPreservedBankProfile({
           },
         targetMatcher: pythonFrames
           ? undefined
-          : (name) => new RegExp(`(?:^|::)v_${variant}::|${variant}`, 'i').test(name),
+          // Adapted C++ lessons place the two implementations in exact
+          // v_before/v_after namespaces. A loose "before" substring matched
+          // unrelated standard-library names such as _M_find_before_node.
+          : (name) => matchesAdaptedVariantTarget(name, variant),
       });
       const pending = [...variants[variant].context];
       const sourceName = manifest.files[variant] || manifest.files.harness;
@@ -963,6 +975,8 @@ module.exports = {
   parseHpcproftt,
   parseLogicalMetadata,
   profiledWorkloadMetrics,
+  matchesAdaptedVariantTarget,
+  selectScopedMetrics,
   visibleSampledContext,
   validateStructure,
 };

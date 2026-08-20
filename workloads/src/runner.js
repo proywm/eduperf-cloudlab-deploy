@@ -252,6 +252,18 @@ function parseResult(output, expectedMode) {
       }
     }
   }
+  const sampleField = (key) => String(fields[key] || '').split(',')
+    .filter(Boolean).map(Number).filter(Number.isFinite);
+  const beforeSamplesUs = sampleField('before_samples_us');
+  const afterSamplesUs = sampleField('after_samples_us');
+  const speedupSamples = sampleField('speedup_samples');
+  if (beforeSamplesUs.length || afterSamplesUs.length) {
+    fields.samples = {
+      before: beforeSamplesUs.map((microseconds) => microseconds / 1_000_000),
+      after: afterSamplesUs.map((microseconds) => microseconds / 1_000_000),
+    };
+  }
+  if (speedupSamples.length) fields.speedup_samples = speedupSamples;
   return fields;
 }
 

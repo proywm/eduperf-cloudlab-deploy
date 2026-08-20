@@ -169,7 +169,13 @@ int benchmark() {
             << "PERFBANK_RESULT mode=benchmark status=pass rounds=" << rounds
             << " median_speedup=" << median_speedup
             << " before_us=" << std::setprecision(1) << median_before
-            << " after_us=" << median_after << "\n";
+            << " after_us=" << median_after << " before_samples_us=";
+  for (int i = 0; i < rounds; ++i) std::cout << (i ? "," : "") << before_times[i];
+  std::cout << " after_samples_us=";
+  for (int i = 0; i < rounds; ++i) std::cout << (i ? "," : "") << after_times[i];
+  std::cout << " speedup_samples=";
+  for (int i = 0; i < rounds; ++i) std::cout << (i ? "," : "") << speedups[i];
+  std::cout << "\n";
   return 0;
 }
 

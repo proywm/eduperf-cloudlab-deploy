@@ -219,6 +219,7 @@ function createHandler({ queue, worker, token, credentials, authManager, allowAn
           status: 'ready',
           service: 'eduperf-cloudlab-worker',
           schemaVersion: 1,
+          evidenceProtocol: 2,
           queueDepth: queue.pending.length + (queue.running ? 1 : 0),
         });
         return;

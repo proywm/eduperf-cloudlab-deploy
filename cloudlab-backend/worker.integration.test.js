@@ -27,6 +27,7 @@ test('the deployed worker discovers 100 cases and executes a fresh comparison', 
     action: 'run',
   });
   assert.equal(result.runtime.check.status, 'pass');
+  assert.equal(result.evidenceProtocol, 2);
   assert.ok(result.runtime.benchmark.median_speedup > 0);
   assert.equal(result.environment.worker, 'integration-test');
   assert.equal(result.environment.nodeType, 'test-node');
