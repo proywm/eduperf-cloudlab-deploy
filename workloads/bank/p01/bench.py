@@ -11,17 +11,20 @@ PROFILE = os.environ.get("EDUPERF_PROFILE") == "1"
 # entries (which always fail zipimporter and are never cached), plus a few
 # real zip files. Failed entries are NOT added to the cache, so the original
 # code re-attempts zipimport.zipimporter on every duplicate occurrence.
-unique_nonzip = [os.path.join(HERE, "dir_%03d" % i) for i in range(40)]
+unique_nonzip = [
+    os.path.join(HERE, "dir_%04d" % i)
+    for i in range(3000 if PROFILE else 40)
+]
 zips = [os.path.join(HERE, "zips", "z%d.zip" % i) for i in range(5)]
 
 base = unique_nonzip + zips
 # Repeat to create many duplicate occurrences of the failing entries.
-PATH = base * (6 if PROFILE else 30)  # bounded profile; full runtime keeps 1350 entries
+PATH = base * (2 if PROFILE else 30)  # profile retains duplicates but samples more unique paths
 
 
 def run():
     total = 0.0
-    for _ in range(10 if PROFILE else 40):
+    for _ in range(1 if PROFILE else 40):
         # Fresh empty cache each iteration so failed (non-zip) entries are
         # never cached -> original code re-attempts them on every duplicate.
         sys.path_importer_cache = {}
