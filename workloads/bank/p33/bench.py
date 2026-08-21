@@ -1,5 +1,6 @@
 import time
 import random
+import os
 
 import target
 from target import Stream
@@ -18,7 +19,7 @@ fn = make_input(n_streams=400, n_others=400)
 # Warmup / sanity
 _ = target.input_streams(fn)
 
-ITERS = 30000
+ITERS = 500 if os.environ.get("EDUPERF_PROFILE") == "1" else 30000
 start = time.perf_counter()
 total = 0
 for _ in range(ITERS):

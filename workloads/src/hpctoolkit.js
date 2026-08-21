@@ -24,7 +24,7 @@ const EVENT_KEYS = {
   PAPI_L2_DCM: 'cacheMisses',
 };
 
-const PROFILE_SIZED_PYTHON_CASES = new Set(['e12', 'e32', 'e35', 'p01', 'p08', 'p35']);
+const PROFILE_SIZED_PYTHON_CASES = new Set(['e12', 'e32', 'e35', 'p01', 'p08', 'p33', 'p35']);
 
 function usesProfileSizedInput(manifest) {
   return manifest.runner?.kind === 'python-bench'
