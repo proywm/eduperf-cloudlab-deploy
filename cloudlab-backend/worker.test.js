@@ -6,8 +6,15 @@ const {
   harmonizeVariantScopes,
   matchesAdaptedVariantTarget,
   selectScopedMetrics,
+  usesProfileSizedInput,
 } = require('../workloads/src/hpctoolkit');
 const { parseResult } = require('../workloads/src/runner');
+
+test('uses the bounded profile path for known instrumentation-heavy Python cases', () => {
+  assert.equal(usesProfileSizedInput({ id: 'p01', runner: { kind: 'python-bench' } }), true);
+  assert.equal(usesProfileSizedInput({ id: 'e01', runner: { kind: 'python-bench' } }), false);
+  assert.equal(usesProfileSizedInput({ id: 'p01', runner: { kind: 'cpp-driver' } }), false);
+});
 
 test('preserves bounded conditional behavior domains in API results', () => {
   assert.deepEqual(cleanCheck({

@@ -24,7 +24,12 @@ const EVENT_KEYS = {
   PAPI_L2_DCM: 'cacheMisses',
 };
 
-const PROFILE_SIZED_PYTHON_CASES = new Set(['e12', 'e32', 'e35', 'p08', 'p35']);
+const PROFILE_SIZED_PYTHON_CASES = new Set(['e12', 'e32', 'e35', 'p01', 'p08', 'p35']);
+
+function usesProfileSizedInput(manifest) {
+  return manifest.runner?.kind === 'python-bench'
+    && PROFILE_SIZED_PYTHON_CASES.has(manifest.id);
+}
 
 function executableOnPath(name) {
   const pathValue = process.env.PATH || '';
@@ -779,7 +784,7 @@ async function collectPreservedBankProfile({
   const frequency = manifest.profiling.sampleFrequencyHz || 1009;
   const sessionDirectory = await fs.mkdtemp(path.join(workDirectory, 'hpctoolkit-bank-'));
   const pythonFrames = manifest.runner.kind === 'python-bench';
-  const profileSizedInput = pythonFrames && PROFILE_SIZED_PYTHON_CASES.has(manifest.id);
+  const profileSizedInput = usesProfileSizedInput(manifest);
   const environment = {
     ...process.env,
     LC_ALL: 'C',
@@ -1001,6 +1006,7 @@ module.exports = {
   harmonizeVariantScopes,
   matchesAdaptedVariantTarget,
   selectScopedMetrics,
+  usesProfileSizedInput,
   visibleSampledContext,
   validateStructure,
 };
