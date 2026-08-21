@@ -5,6 +5,7 @@ const { cleanCheck } = require('./worker');
 const {
   harmonizeVariantScopes,
   matchesAdaptedVariantTarget,
+  profileFrequency,
   selectScopedMetrics,
   usesProfileSizedInput,
 } = require('../workloads/src/hpctoolkit');
@@ -15,6 +16,8 @@ test('uses the bounded profile path for known instrumentation-heavy Python cases
   assert.equal(usesProfileSizedInput({ id: 'p33', runner: { kind: 'python-bench' } }), true);
   assert.equal(usesProfileSizedInput({ id: 'e01', runner: { kind: 'python-bench' } }), false);
   assert.equal(usesProfileSizedInput({ id: 'p01', runner: { kind: 'cpp-driver' } }), false);
+  assert.equal(profileFrequency({ id: 'p01', profiling: { sampleFrequencyHz: 1009 } }), 4009);
+  assert.equal(profileFrequency({ id: 'e01', profiling: { sampleFrequencyHz: 1009 } }), 1009);
 });
 
 test('preserves bounded conditional behavior domains in API results', () => {

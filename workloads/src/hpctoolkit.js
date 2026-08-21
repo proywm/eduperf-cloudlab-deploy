@@ -31,6 +31,11 @@ function usesProfileSizedInput(manifest) {
     && PROFILE_SIZED_PYTHON_CASES.has(manifest.id);
 }
 
+function profileFrequency(manifest) {
+  const configured = manifest.profiling.sampleFrequencyHz || 1009;
+  return manifest.id === 'p01' ? Math.max(configured, 4009) : configured;
+}
+
 function executableOnPath(name) {
   const pathValue = process.env.PATH || '';
   return Promise.all(
@@ -781,7 +786,7 @@ async function collectPreservedBankProfile({
   const tools = await detectHpctoolkit(configuredRoot);
   const manifest = learningCase.manifest;
   const events = manifest.profiling.events;
-  const frequency = manifest.profiling.sampleFrequencyHz || 1009;
+  const frequency = profileFrequency(manifest);
   const sessionDirectory = await fs.mkdtemp(path.join(workDirectory, 'hpctoolkit-bank-'));
   const pythonFrames = manifest.runner.kind === 'python-bench';
   const profileSizedInput = usesProfileSizedInput(manifest);
@@ -1003,6 +1008,7 @@ module.exports = {
   parseHpcproftt,
   parseLogicalMetadata,
   profiledWorkloadMetrics,
+  profileFrequency,
   harmonizeVariantScopes,
   matchesAdaptedVariantTarget,
   selectScopedMetrics,
