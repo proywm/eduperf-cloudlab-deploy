@@ -30,6 +30,9 @@ class EduPerfWorker {
     this.hpctoolkitRoot = options.hpctoolkitRoot || '';
     this.profilePython = options.profilePython || process.env.EDUPERF_PROFILE_PYTHON || '';
     this.workerLabel = options.workerLabel || process.env.EDUPERF_WORKER_LABEL || 'cloudlab-worker';
+    this.backendRevision = options.backendRevision
+      || process.env.EDUPERF_BACKEND_REVISION
+      || 'development';
     this.nodeType = options.nodeType || process.env.EDUPERF_NODE_TYPE || 'unknown';
     this.environmentKind = options.environmentKind
       || process.env.EDUPERF_ENVIRONMENT_KIND
@@ -245,6 +248,8 @@ class EduPerfWorker {
     profile.provenance.worker = this.workerLabel;
     profile.provenance.nodeType = this.nodeType;
     profile.provenance.kernel = os.release();
+    profile.provenance.backendRevision = this.backendRevision;
+    profile.provenance.adapterHash = learningCase.adapterHash;
     return profile;
   }
 
@@ -257,6 +262,8 @@ class EduPerfWorker {
       const result = {
         schemaVersion: 1,
         evidenceProtocol: 3,
+        backendRevision: this.backendRevision,
+        adapterHash: learningCase.adapterHash,
         runId,
         caseId,
         perfbankId: learningCase.manifest.perfbankId,

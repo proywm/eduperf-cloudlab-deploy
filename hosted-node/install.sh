@@ -27,6 +27,7 @@ readonly REPOSITORY_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 readonly STATE_ROOT="${XDG_STATE_HOME:-${HOME}/.local/state}/eduperf"
 readonly CONFIG_ROOT="${XDG_CONFIG_HOME:-${HOME}/.config}/eduperf"
 readonly SERVICE_DIRECTORY="${XDG_CONFIG_HOME:-${HOME}/.config}/systemd/user"
+readonly BACKEND_REVISION="$(git -C "${REPOSITORY_ROOT}" rev-parse HEAD)"
 readonly SERVICE_FILE="${SERVICE_DIRECTORY}/eduperf-backend.service"
 readonly NODE_BIN="$(command -v node || true)"
 
@@ -150,6 +151,7 @@ Environment=EDUPERF_ALLOW_ANONYMOUS=true
 Environment=EDUPERF_ENVIRONMENT_KIND=hosted
 Environment=EDUPERF_NODE_TYPE=hosted-x86-64
 Environment=EDUPERF_WORKER_LABEL=$(hostname -f)
+Environment=EDUPERF_BACKEND_REVISION=${BACKEND_REVISION}
 Environment=EDUPERF_PORT=8443
 ExecStart=${NODE_BIN} ${REPOSITORY_ROOT}/cloudlab-backend/server.js
 Restart=on-failure

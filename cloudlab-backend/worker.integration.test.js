@@ -14,6 +14,7 @@ test('the deployed worker discovers 100 cases and executes a fresh comparison', 
     workRoot,
     workerLabel: 'integration-test',
     nodeType: 'test-node',
+    backendRevision: 'integration-test-revision',
   });
 
   const capabilities = await worker.capabilities();
@@ -28,6 +29,8 @@ test('the deployed worker discovers 100 cases and executes a fresh comparison', 
   });
   assert.equal(result.runtime.check.status, 'pass');
   assert.equal(result.evidenceProtocol, 3);
+  assert.equal(result.backendRevision, 'integration-test-revision');
+  assert.match(result.adapterHash, /^[a-f0-9]{64}$/);
   assert.ok(result.runtime.benchmark.median_speedup > 0);
   assert.equal(result.environment.worker, 'integration-test');
   assert.equal(result.environment.nodeType, 'test-node');

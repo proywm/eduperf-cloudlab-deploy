@@ -112,6 +112,7 @@ Environment=EDUPERF_PROFILE_PYTHON=${profile_python}
 Environment=EDUPERF_ENVIRONMENT_KIND=cloudlab
 Environment=EDUPERF_NODE_TYPE=m510
 Environment=EDUPERF_WORKER_LABEL=${fqdn}
+Environment=EDUPERF_BACKEND_REVISION=$(git -C "${EDUPERF_ROOT}" rev-parse HEAD)
 Environment=EDUPERF_PORT=8443
 ExecStart=/opt/node-v${NODE_VERSION}/bin/node ${EDUPERF_ROOT}/cloudlab-backend/server.js
 Restart=on-failure

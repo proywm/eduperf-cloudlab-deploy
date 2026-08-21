@@ -219,6 +219,7 @@ test('queues one measurement at a time and exposes authenticated status', async 
   let active = 0;
   let maximumActive = 0;
   const worker = {
+    backendRevision: 'server-test-revision',
     learningCase: async () => ({}),
     capabilities: async () => [{ caseId: 'matrix-unrolling', runtime: true, profile: true }],
     execute: async ({ runId, caseId, action, onProgress }) => {
@@ -240,7 +241,10 @@ test('queues one measurement at a time and exposes authenticated status', async 
   context.after(() => server.close());
   const port = server.address().port;
 
-  assert.equal((await request(port, 'GET', '/v1/health')).status, 200);
+  const health = await request(port, 'GET', '/v1/health');
+  assert.equal(health.status, 200);
+  assert.equal(health.body.evidenceProtocol, 3);
+  assert.equal(health.body.backendRevision, 'server-test-revision');
   assert.equal((await request(port, 'GET', '/v1/cases', 'wrong')).status, 401);
   const first = await request(port, 'POST', '/v1/runs', credentials[0].token, {
     caseId: 'matrix-unrolling', action: 'run-and-profile',

@@ -1,5 +1,6 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const { adapterFingerprint } = require('./adapter-fingerprint');
 
 const DEFAULT_CASE_ID = 'matrix-unrolling';
 
@@ -245,6 +246,7 @@ async function loadCase(extensionPath, caseId = DEFAULT_CASE_ID) {
     manifest,
     beforeCode,
     afterCode,
+    adapterHash: await adapterFingerprint(caseDirectory, manifest),
   };
 }
 
@@ -278,6 +280,7 @@ async function loadBankCases(extensionPath) {
       manifest,
       beforeCode: manifest.code.before,
       afterCode: manifest.code.after,
+      adapterHash: await adapterFingerprint(directory, manifest),
     };
   }));
 }
