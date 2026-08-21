@@ -245,6 +245,18 @@ test('queues one measurement at a time and exposes authenticated status', async 
   assert.equal(health.status, 200);
   assert.equal(health.body.evidenceProtocol, 3);
   assert.equal(health.body.backendRevision, 'server-test-revision');
+  assert.deepEqual(health.body.scheduler, {
+    policy: 'serial-deterministic-measurement',
+    concurrency: 1,
+    maxQueuedJobs: 250,
+    maxOutstandingJobsPerClient: 3,
+    queueDepth: 0,
+    queuedJobs: 0,
+    activeAction: '',
+    recentCompletedJobs: 0,
+    serviceSamples: {},
+    medianServiceMs: {},
+  });
   assert.equal((await request(port, 'GET', '/v1/cases', 'wrong')).status, 401);
   const first = await request(port, 'POST', '/v1/runs', credentials[0].token, {
     caseId: 'matrix-unrolling', action: 'run-and-profile',
@@ -267,6 +279,15 @@ test('queues one measurement at a time and exposes authenticated status', async 
   assert.equal(firstStatus.body.requestedBy, 'faculty-a');
   assert.equal(secondStatus.body.requestedBy, 'faculty-b');
   assert.equal(maximumActive, 1);
+  const measuredHealth = await request(port, 'GET', '/v1/health');
+  assert.equal(measuredHealth.body.scheduler.recentCompletedJobs, 2);
+  assert.equal(measuredHealth.body.scheduler.queueDepth, 0);
+  assert.deepEqual(measuredHealth.body.scheduler.serviceSamples, {
+    run: 1,
+    'run-and-profile': 1,
+  });
+  assert.ok(measuredHealth.body.scheduler.medianServiceMs['run-and-profile'] >= 15);
+  assert.ok(measuredHealth.body.scheduler.medianServiceMs.run >= 15);
 });
 
 test('preserves classroom fairness by limiting each user without blocking peers', async () => {
@@ -307,4 +328,63 @@ test('bounds the shared classroom queue', async () => {
   );
   release({ status: 'pass' });
   while (queue.running) await new Promise((resolve) => setTimeout(resolve, 1));
+});
+
+test('cancels queued and active measurements without running the queued job', async () => {
+  const started = [];
+  const queue = new SerialJobQueue({
+    execute: ({ caseId, signal }) => new Promise((resolve, reject) => {
+      started.push(caseId);
+      signal.addEventListener('abort', () => {
+        const error = new Error('Operation canceled.');
+        error.name = 'AbortError';
+        reject(error);
+      }, { once: true });
+      if (caseId === 'finishes') resolve({ status: 'pass' });
+    }),
+  });
+  const active = queue.enqueue('active', 'run', 'student@example.edu');
+  const queued = queue.enqueue('never-starts', 'profile', 'student@example.edu');
+  queue.cancel(queued.runId);
+  assert.equal(queue.get(queued.runId).state, 'canceled');
+  queue.cancel(active.runId);
+  while (queue.running) await new Promise((resolve) => setTimeout(resolve, 1));
+  assert.equal(queue.get(active.runId).state, 'canceled');
+  assert.deepEqual(started, ['active']);
+});
+
+test('cancel endpoint is owner-scoped and aborts the active worker operation', async (context) => {
+  const worker = {
+    learningCase: async () => ({}),
+    capabilities: async () => [],
+    execute: ({ signal }) => new Promise((resolve, reject) => {
+      signal.addEventListener('abort', () => reject(new Error('Operation canceled.')), {
+        once: true,
+      });
+    }),
+  };
+  const credentials = [
+    { id: 'owner', label: 'Owner', token: 'o'.repeat(48) },
+    { id: 'peer', label: 'Peer', token: 'p'.repeat(48) },
+  ];
+  const queue = new SerialJobQueue(worker);
+  const server = http.createServer(createHandler({ queue, worker, credentials }));
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  context.after(() => server.close());
+  const port = server.address().port;
+  const submitted = await request(port, 'POST', '/v1/runs', credentials[0].token, {
+    caseId: 'matrix-unrolling', action: 'run',
+  });
+  assert.equal((await request(
+    port, 'DELETE', submitted.body.statusPath, credentials[1].token,
+  )).status, 404);
+  assert.equal((await request(
+    port, 'DELETE', submitted.body.statusPath, credentials[0].token,
+  )).status, 202);
+  while (queue.running) await new Promise((resolve) => setTimeout(resolve, 1));
+  const canceled = await request(
+    port, 'GET', submitted.body.statusPath, credentials[0].token,
+  );
+  assert.equal(canceled.body.state, 'canceled');
+  assert.equal(canceled.body.error, undefined);
 });

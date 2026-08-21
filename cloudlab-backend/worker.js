@@ -69,7 +69,7 @@ class EduPerfWorker {
     return executable;
   }
 
-  async runRuntime(learningCase, jobDirectory, onProgress, verifyOnly = false) {
+  async runRuntime(learningCase, jobDirectory, onProgress, verifyOnly = false, signal) {
     const { manifest } = learningCase;
     if (manifest.runner.kind === 'python-bench') {
       onProgress('Preparing the embedded Python adapter');
@@ -85,6 +85,7 @@ class EduPerfWorker {
         workDirectory,
         equivalenceFile: manifest.files.equivalence,
         timeoutMs: manifest.runner.timeoutMs,
+        signal,
       });
       if (check.status !== 'pass') throw new Error('Behavior differs; remote timing was stopped.');
       if (verifyOnly) return { check: cleanCheck(check) };
@@ -94,6 +95,7 @@ class EduPerfWorker {
         files: manifest.files,
         rounds: manifest.runner.rounds,
         timeoutMs: manifest.runner.timeoutMs,
+        signal,
         onRound: (round, rounds, variant) => onProgress(
           `Timing ${variant}, round ${round}/${rounds}`,
         ),
@@ -111,6 +113,7 @@ class EduPerfWorker {
         onRound: verifyOnly ? undefined : (round, rounds) => onProgress(
           `Repeating preserved C++ timing, round ${round}/${rounds}`,
         ),
+        signal,
       });
       if (execution.check.status !== 'pass') throw new Error('Behavior differs; remote timing was stopped.');
       return {
@@ -123,7 +126,7 @@ class EduPerfWorker {
     const checkExecution = await runExecutable(
       executable,
       manifest.execution.checkMode,
-      { cwd: jobDirectory },
+      { cwd: jobDirectory, signal },
     );
     if (checkExecution.result.status !== 'pass') {
       throw new Error('Behavior differs; remote timing was stopped.');
@@ -133,12 +136,12 @@ class EduPerfWorker {
     const benchmarkExecution = await runExecutable(
       executable,
       manifest.execution.benchmarkMode,
-      { cwd: jobDirectory },
+      { cwd: jobDirectory, signal },
     );
     return { check: cleanCheck(checkExecution.result), benchmark: benchmarkExecution.result };
   }
 
-  async profilingExecutable(learningCase) {
+  async profilingExecutable(learningCase, signal) {
     const caseId = learningCase.manifest.id;
     if (!this.compilations.has(caseId)) {
       this.compilations.set(caseId, (async () => {
@@ -166,6 +169,7 @@ class EduPerfWorker {
             buildDirectory,
             sourceFile: manifest.files.harness,
             flags: profilingFlags,
+            signal,
           })
           : await compileCase({
             compiler,
@@ -178,6 +182,7 @@ class EduPerfWorker {
               manifest.files.harness,
             ],
             flags: manifest.build.flags,
+            signal,
           });
         return { ...compilation, buildDirectory };
       })());
@@ -190,7 +195,7 @@ class EduPerfWorker {
     }
   }
 
-  async runProfile(learningCase, runId, jobDirectory, onProgress) {
+  async runProfile(learningCase, runId, jobDirectory, onProgress, signal) {
     const { manifest } = learningCase;
     let profile;
     if (manifest.profiling.kind === 'hosted-hpctoolkit') {
@@ -212,9 +217,10 @@ class EduPerfWorker {
           configuredRoot: this.hpctoolkitRoot,
           provenanceKind: this.environmentKind,
           onProgress,
+          signal,
         });
       } else {
-        const compilation = await this.profilingExecutable(learningCase);
+        const compilation = await this.profilingExecutable(learningCase, signal);
         profile = await collectPreservedBankProfile({
           learningCase,
           executable: compilation.executable,
@@ -223,11 +229,12 @@ class EduPerfWorker {
           configuredRoot: this.hpctoolkitRoot,
           provenanceKind: this.environmentKind,
           onProgress,
+          signal,
         });
       }
     } else if (manifest.profiling.kind === 'hpctoolkit') {
       onProgress('Preparing the optimized source-mapped profiling runner');
-      const compilation = await this.profilingExecutable(learningCase);
+      const compilation = await this.profilingExecutable(learningCase, signal);
       profile = await collectHpctoolkitProfile({
         learningCase,
         executable: compilation.executable,
@@ -236,6 +243,7 @@ class EduPerfWorker {
         compiler: compilation.compiler,
         provenanceKind: this.environmentKind,
         onProgress,
+        signal,
       });
     } else {
       throw new Error('This case does not provide a hosted HPCToolkit profiling adapter.');
@@ -253,9 +261,10 @@ class EduPerfWorker {
     return profile;
   }
 
-  async execute({ runId, caseId, action, onProgress = () => {} }) {
+  async execute({ runId, caseId, action, onProgress = () => {}, signal }) {
     if (!ACTIONS.has(action)) throw new Error(`Unsupported action: ${action}`);
     const learningCase = await this.learningCase(caseId);
+    if (signal?.aborted) throw new Error('Operation canceled.');
     const jobDirectory = path.join(this.workRoot, 'jobs', runId);
     await fs.mkdir(jobDirectory, { recursive: true });
     try {
@@ -283,10 +292,13 @@ class EduPerfWorker {
           jobDirectory,
           onProgress,
           action === 'verify',
+          signal,
         );
       }
       if (action === 'profile' || action === 'run-and-profile') {
-        result.profile = await this.runProfile(learningCase, runId, jobDirectory, onProgress);
+        result.profile = await this.runProfile(
+          learningCase, runId, jobDirectory, onProgress, signal,
+        );
       }
       return result;
     } finally {

@@ -124,6 +124,7 @@ class SerialJobQueue {
       state: 'queued',
       queuedAt: new Date().toISOString(),
       progress: ['Waiting for the dedicated measurement worker'],
+      abortController: new AbortController(),
     };
     this.jobs.set(runId, job);
     this.pending.push(job);
@@ -156,11 +157,15 @@ class SerialJobQueue {
             job.progress.push(String(message));
             job.progress = job.progress.slice(-20);
           },
+          signal: job.abortController.signal,
         });
-        job.state = 'complete';
+        job.state = job.cancelRequested ? 'canceled' : 'complete';
       } catch (error) {
-        job.state = 'failed';
-        job.error = sanitizeError(error);
+        if (job.cancelRequested) job.state = 'canceled';
+        else {
+          job.state = 'failed';
+          job.error = sanitizeError(error);
+        }
       }
       job.completedAt = new Date().toISOString();
       this.activeJob = undefined;
@@ -172,12 +177,61 @@ class SerialJobQueue {
     return this.jobs.get(runId);
   }
 
+  cancel(runId) {
+    const job = this.jobs.get(runId);
+    if (!job || ['complete', 'failed', 'canceled'].includes(job.state)) return job;
+    job.cancelRequested = true;
+    job.progress.push('Cancellation requested by the client');
+    if (job.state === 'queued') {
+      this.pending = this.pending.filter((candidate) => candidate.runId !== runId);
+      job.state = 'canceled';
+      job.completedAt = new Date().toISOString();
+      delete job.position;
+      this.updatePositions();
+    } else job.abortController.abort();
+    return job;
+  }
+
   trim() {
     if (this.jobs.size <= MAX_JOBS) return;
     for (const [runId, job] of this.jobs) {
-      if (['complete', 'failed'].includes(job.state)) this.jobs.delete(runId);
+      if (['complete', 'failed', 'canceled'].includes(job.state)) this.jobs.delete(runId);
       if (this.jobs.size <= MAX_JOBS) break;
     }
+  }
+
+  status() {
+    const durations = { verify: [], run: [], profile: [], 'run-and-profile': [] };
+    for (const job of this.jobs.values()) {
+      if (job.state !== 'complete' || !durations[job.action]) continue;
+      const started = Date.parse(job.startedAt || '');
+      const completed = Date.parse(job.completedAt || '');
+      if (Number.isFinite(started) && Number.isFinite(completed) && completed >= started) {
+        durations[job.action].push(completed - started);
+      }
+    }
+    const median = (values) => {
+      if (!values.length) return undefined;
+      const ordered = [...values].sort((left, right) => left - right);
+      const middle = Math.floor(ordered.length / 2);
+      return ordered.length % 2 ? ordered[middle] : (ordered[middle - 1] + ordered[middle]) / 2;
+    };
+    return {
+      policy: 'serial-deterministic-measurement',
+      concurrency: 1,
+      maxQueuedJobs: MAX_QUEUED_JOBS,
+      maxOutstandingJobsPerClient: MAX_USER_OUTSTANDING_JOBS,
+      queueDepth: this.pending.length + (this.running ? 1 : 0),
+      queuedJobs: this.pending.length,
+      activeAction: this.activeJob?.action || '',
+      recentCompletedJobs: Object.values(durations).reduce((sum, values) => sum + values.length, 0),
+      serviceSamples: Object.fromEntries(Object.entries(durations)
+        .filter(([, values]) => values.length > 0)
+        .map(([action, values]) => [action, values.length])),
+      medianServiceMs: Object.fromEntries(Object.entries(durations)
+        .map(([action, values]) => [action, median(values)])
+        .filter(([, value]) => Number.isFinite(value))),
+    };
   }
 }
 
@@ -222,6 +276,7 @@ function createHandler({ queue, worker, token, credentials, authManager, allowAn
           evidenceProtocol: 3,
           backendRevision: worker.backendRevision || 'development',
           queueDepth: queue.pending.length + (queue.running ? 1 : 0),
+          scheduler: queue.status(),
         });
         return;
       }
@@ -326,6 +381,17 @@ function createHandler({ queue, worker, token, credentials, authManager, allowAn
           return;
         }
         send(response, 200, publicJob(job));
+        return;
+      }
+
+      if (request.method === 'DELETE' && runMatch) {
+        const job = queue.get(runMatch[1]);
+        if (!job || job.requestedBy !== credential.id) {
+          send(response, 404, { error: 'Run not found.' });
+          return;
+        }
+        queue.cancel(job.runId);
+        send(response, 202, publicJob(job));
         return;
       }
 
