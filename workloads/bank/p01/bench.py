@@ -16,12 +16,12 @@ zips = [os.path.join(HERE, "zips", "z%d.zip" % i) for i in range(5)]
 
 base = unique_nonzip + zips
 # Repeat to create many duplicate occurrences of the failing entries.
-PATH = base * (6 if PROFILE else 30)  # bounded profile; full runtime keeps 1350 entries
+PATH = base * (3 if PROFILE else 30)  # bounded profile; full runtime keeps 1350 entries
 
 
 def run():
     total = 0.0
-    for _ in range(8 if PROFILE else 40):
+    for _ in range(5 if PROFILE else 40):
         # Fresh empty cache each iteration so failed (non-zip) entries are
         # never cached -> original code re-attempts them on every duplicate.
         sys.path_importer_cache = {}
