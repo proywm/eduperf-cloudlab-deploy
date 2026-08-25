@@ -44,6 +44,11 @@ an ordinary user and provides the extension's allowlisted, passwordless email
 sign-in service. The pilot endpoint is built into the VS Code extension, so
 participants handle neither an IP address nor a JSON credential file.
 
+If a campus perimeter blocks inbound access to that persistent machine, use
+the [U.S.-hosted SRL1 relay](gcp-relay/README.md). It creates a stable public
+endpoint in Google Cloud `us-central1` while keeping every workload and
+measurement on SRL1 behind an outbound, restricted tunnel.
+
 ## Local validation
 
 On Ubuntu with a C++ compiler and Eigen installed:

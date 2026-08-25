@@ -27,12 +27,13 @@ jobs:
         run: |
           test ! -e vscode-extension
           test ! -e data
-          ! grep -R -n -E '/home/user|tenureRef|course_files_export|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY' cloudlab-backend workloads profile.py README.md SECURITY.md package.json
+          ! grep -R -n -E '/home/user|tenureRef|course_files_export|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY' cloudlab-backend workloads gcp-relay profile.py README.md SECURITY.md package.json
 
       - name: Validate backend and CloudLab scripts
         run: |
-          bash -n cloudlab-backend/bootstrap.sh cloudlab-backend/install-hpctoolkit.sh hosted-node/install.sh hosted-node/install-hpctoolkit.sh hosted-node/install-profiler.sh hosted-node/configure-email.sh hosted-node/update-roster.sh
+          bash -n cloudlab-backend/bootstrap.sh cloudlab-backend/install-hpctoolkit.sh hosted-node/install.sh hosted-node/install-hpctoolkit.sh hosted-node/install-profiler.sh hosted-node/configure-email.sh hosted-node/update-roster.sh gcp-relay/startup.sh gcp-relay/configure-srl1.sh gcp-relay/deploy.sh gcp-relay/test.sh
           python3 -m py_compile profile.py
+          npm run test:relay
           npm run test:backend
 
       - name: Build the pinned workload runtime

@@ -13,9 +13,10 @@
   },
   "scripts": {
     "build:workloads": "node workloads/scripts/build-portable.js",
-    "test": "npm run test:backend && npm run test:workloads && npm run test:integration",
+    "test": "npm run test:relay && npm run test:backend && npm run test:workloads && npm run test:integration",
     "test:backend": "node --test cloudlab-backend/auth.test.js cloudlab-backend/server.test.js cloudlab-backend/worker.test.js",
     "test:integration": "node --test cloudlab-backend/worker.integration.test.js",
+    "test:relay": "bash gcp-relay/test.sh",
     "test:workloads": "node workloads/scripts/test-portable.js",
     "test:enhanced": "node workloads/scripts/test-case.js"
   }
